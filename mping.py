@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List
+from typing import List, Dict
 import os
 import time
 import ipaddress
@@ -112,57 +112,72 @@ class PingApp:
         self.previous_frame_scroll = 0
         self.width_multiplier = pygui.Int(5)
 
-        self.ip_contents: List[pygui.String] = []
+        self.file_list = []
+        self.selected_files: Dict[str, pygui.Bool] = {}
+        self.selected_files_contents: Dict[str, pygui.String] = {}
+
         self.selected_file = None
         self.pings: List[PyguiPing] = []
-        self.refresh_file_list()
-        self.reload_pings()
-
-    def reload_pings(self):
-        self.pings.clear()
-        for ping_data in self.file_is_loaded.values():
-            if not ping_data["selected"]:
+    
+    def refresh_ip_folder(self):
+        self.file_list = os.listdir("ips")
+        
+        # Only keep the files that are in the list
+        seen_files: Dict[str, pygui.Bool] = {}
+        for file in self.file_list:
+            seen_files[file] = self.selected_files.get(file) or pygui.Bool(False)
+        self.selected_files = seen_files
+    
+    def load_contents_from_selected_files(self):
+        self.selected_files_contents.clear()
+        for file, is_selected in self.selected_files.items():
+            if not is_selected:
                 continue
 
-            self.pings += ping_data["pings"]
-    
-    def refresh_file_list(self):
-        self.file_is_loaded = {}
-        for file in os.listdir("ips"):
             with open(f"ips/{file}") as f:
-                ips = f.read().split("\n")
-                ips = list(filter(lambda x: x != "", ips))
-            
-            ip_list = []
-            for entry in ips:
+                self.selected_files_contents[file] = pygui.String(f.read())
+    
+    def load_pings_from_strings(self):
+        new_pings = []
+        for contents in self.selected_files_contents.values():
+            contents: pygui.String
+            for entry in contents.value.split("\n"):
+                if entry == "":
+                    continue
+
                 if "/" in entry:
                     try:
                         network = ipaddress.IPv4Network(entry, strict=False)
                         if network.prefixlen < 24:
                             raise ValueError(f"{entry}. Too many hosts. Limit /24")
-                        ip_list += [str(ip) for ip in network.hosts()]
+                        new_pings += [str(ip) for ip in network.hosts()]
                     except (ipaddress.AddressValueError, ipaddress.NetmaskValueError, ValueError) as e:
                         print(e)
                 else:
-                    ip_list.append(entry)
+                    new_pings.append(entry)
         
-            self.file_is_loaded[file] = {}
-            self.file_is_loaded[file]["selected"] = pygui.Bool(False)
-            self.file_is_loaded[file]["pings"] = [PyguiPing(ip) for ip in ip_list]
-        
-        # self.file_is_loaded["Default"]["selected"].value = True
+        old_pings_lookup = {p.get_destination(): p for p in self.pings}
+
+        new_pings_while_keeping_old = []
+        for new_ping in new_pings:
+            existing_ping = old_pings_lookup.get(new_ping)
+            new_pings_while_keeping_old.append(existing_ping if existing_ping is not None else PyguiPing(new_ping))
+        self.pings = new_pings_while_keeping_old 
     
-    def draw_ip_list(self):
-        if pygui.button("Refresh list"):
-            self.refresh_file_list()
-        pygui.dummy((0, 5))
-        pygui.separator_text("Ping Lists")
+    def draw_ping_list(self):
         do_reload = False
-        for file, file_data in self.file_is_loaded.items():
-            do_reload = do_reload or pygui.selectable_bool_ptr(file, file_data["selected"])
+
+        if pygui.get_frame_count() % 120 == 1:
+            do_reload = True
+            self.refresh_ip_folder()
+
+        pygui.separator_text("Ping Lists")
+        for file, is_selected in self.selected_files.items():
+            do_reload = pygui.selectable_bool_ptr(file, is_selected) or do_reload
         
         if do_reload:
-            self.reload_pings()
+            self.load_contents_from_selected_files()
+            self.load_pings_from_strings()
 
     def draw_live_graph(self):
         if did_clear := pygui.button("Clear"):
@@ -303,11 +318,27 @@ class PingApp:
         pygui.pop_style_var()
     
     def draw_editor_window(self):
-        pygui.input_text_multiline("Editor", )
+        if len(self.selected_files_contents) == 0:
+            return
+
+        file, contents_buf = list(self.selected_files_contents.items())[0]
+        file: str
+        contents_buf: pygui.String
+
+        has_changed = pygui.input_text_multiline("Editor", contents_buf, pygui.get_content_region_avail())
+
+        if has_changed:
+            with open(f"ips/{file}", "w") as f:
+                f.write(contents_buf.value)
+            self.load_pings_from_strings()
 
     def draw(self):
         if pygui.begin("Load IPs"):
-            self.draw_ip_list()
+            self.draw_ping_list()
+        pygui.end()
+
+        if pygui.begin("Editor"):
+            self.draw_editor_window()
         pygui.end()
 
         if pygui.begin("Live Graph"):

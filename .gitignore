@@ -1,4 +1,6 @@
 __pycache__
+.vscode
+dist
 pygui
 venv
 imgui.ini

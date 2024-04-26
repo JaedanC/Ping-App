@@ -5,6 +5,15 @@ from pygui_demo import demo_fonts_init, pygui_demo_window
 from mping import PingApp
 
 
+# This is required for py2exe
+# Reference: https://www.py2exe.org/index.cgi/PyOpenGL
+from ctypes import util
+try:
+    from OpenGL.platform import win32
+except AttributeError:
+    pass
+
+
 vsync_enabled = pygui.Bool(True)
 show_imgui_demo = pygui.Bool(False)
 show_pygui_demo = pygui.Bool(True)

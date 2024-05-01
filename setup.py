@@ -71,9 +71,14 @@ for destination_folder, src_files in additional_files:
 
 # Be sure to update the name of the entry script
 freeze(
-    console=[{"script": "app.py"}],
+    console=[{
+        "script": "app.py",
+        "icon_resources": [(1, "icons8-signal-96.ico")],
+    }],
     data_files=additional_files,
     options={
-        "bundle_files": 1
+        "bundle_files": 1,
+        "includes": ["pygui"],
+        "dll_excludes": [ "mswsock.dll", "powrprof.dll", "crypt32.dll" ],
     }
 )

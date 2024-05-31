@@ -56,6 +56,23 @@ def collect_files(root_folder) -> List[Tuple[str, List[str]]]:
     return freeze_format
 
 
+def filter_missing_files(files_structure: List[Tuple[str, List[str]]]):
+    keep_structure = []
+    for dest, files in files_structure:
+        keep_files = []
+        for file in files:
+            if not os.path.exists(file):
+                continue
+
+            keep_files.append(file)
+        
+        if len(keep_files) == 0:
+            continue
+
+        keep_structure.append((dest, keep_files))
+    return keep_structure
+
+
 # Make sure to recursively include pygui
 additional_files = collect_files("pygui")
 additional_files += collect_files("ips")
@@ -64,6 +81,7 @@ additional_files += collect_files("ips")
 additional_files.append((".", ["imgui.ini"]))
 
 
+additional_files = filter_missing_files(additional_files)
 for destination_folder, src_files in additional_files:
     for src_file in src_files:
         print("Copying to {} file {}".format(destination_folder, src_file))

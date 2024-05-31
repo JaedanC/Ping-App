@@ -135,7 +135,7 @@ class PingApp:
                 continue
 
             with open(f"ips/{file}") as f:
-                self.selected_files_contents[file] = pygui.String(f.read())
+                self.selected_files_contents[file] = pygui.String(f.read(), buffer_size=2048)
     
     def load_pings_from_strings(self):
         new_pings = []

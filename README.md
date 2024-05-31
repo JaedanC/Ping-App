@@ -27,3 +27,7 @@ pip install -r requirements.txt
 ./venv/scripts/activate
 python app.py
 ```
+
+## Creating an exe
+
+To compile this tool into an exe, run `setup.py`. The resulting .exe will be inside the `dist` directory.

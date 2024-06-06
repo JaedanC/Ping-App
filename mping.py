@@ -128,8 +128,8 @@ class PingApp:
     
     def refresh_ip_folder(self):
         if not os.path.exists("ips"):
-            os.mkdir("ips")
-        
+            os.makedirs("ips")
+
         self.file_list = os.listdir("ips")
         
         # Only keep the files that are in the list

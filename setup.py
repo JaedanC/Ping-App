@@ -75,7 +75,7 @@ def filter_missing_files(files_structure: List[Tuple[str, List[str]]]):
 
 # Make sure to recursively include pygui
 additional_files = collect_files("pygui")
-additional_files += collect_files("ips")
+# additional_files += collect_files("ips")
 
 # --- Include any other files that need to be copied here ---
 additional_files.append((".", ["imgui.ini"]))

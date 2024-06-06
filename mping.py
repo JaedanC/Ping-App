@@ -118,6 +118,13 @@ class PingApp:
 
         self.selected_file = None
         self.pings: List[PyguiPing] = []
+
+        self.is_currently_renaming = None
+        self.renaming_site = pygui.String()
+        self.is_currently_adding_site = False
+        self.adding_site = pygui.String()
+        self.deleting_site_modal = pygui.Bool(False)
+        self.is_currently_deleting = None
     
     def refresh_ip_folder(self):
         self.file_list = os.listdir("ips")
@@ -135,7 +142,8 @@ class PingApp:
                 continue
 
             with open(f"ips/{file}") as f:
-                self.selected_files_contents[file] = pygui.String(f.read(), buffer_size=2048)
+                contents = f.read()
+                self.selected_files_contents[file] = pygui.String(contents, buffer_size=len(contents)+2048)
     
     def load_pings_from_strings(self):
         new_pings = []
@@ -173,11 +181,65 @@ class PingApp:
 
         pygui.separator_text("Ping Lists")
         for file, is_selected in self.selected_files.items():
-            do_reload = pygui.selectable_bool_ptr(file, is_selected) or do_reload
+            if pygui.small_button("/###Rename button " + file):
+                self.is_currently_renaming = file
+                self.renaming_site = pygui.String(file)
+                pygui.set_keyboard_focus_here()
+            pygui.same_line()
+            
+            if self.is_currently_renaming == file:
+                if pygui.is_key_pressed(pygui.KEY_ESCAPE):
+                    self.is_currently_renaming = None
+                
+                if pygui.input_text("###Renaming file", self.renaming_site, pygui.INPUT_TEXT_FLAGS_ENTER_RETURNS_TRUE):
+                    print("Rename", file, "to", self.renaming_site.value)
+                    self.is_currently_renaming = None
+            else:
+                do_reload = pygui.selectable_bool_ptr(file, is_selected, pygui.SELECTABLE_FLAGS_ALLOW_OVERLAP) or do_reload
+            
+            pygui.same_line(pygui.get_content_region_avail()[0] - 15)
+            if pygui.small_button("x###Delete button " + file):
+                self.is_currently_deleting = file
+                self.deleting_site_modal.value = True
+                pygui.open_popup("Delete List")
+
+        self.draw_add_site_area()
+
+        if pygui.begin_popup_modal("Delete List", self.deleting_site_modal):
+            pygui.text("Are you sure you want to delete:")
+            pygui.text("{}".format(self.is_currently_deleting))
+            if pygui.button("Confirm"):
+                os.remove("ips/" + self.is_currently_deleting)
+                self.deleting_site_modal.value = False
+                self.refresh_ip_folder()
+            pygui.same_line()
+            if pygui.button("Cancel") or pygui.is_key_pressed(pygui.KEY_ESCAPE):
+                self.deleting_site_modal.value = False
+            pygui.end_popup()
         
         if do_reload:
             self.load_contents_from_selected_files()
             self.load_pings_from_strings()
+    
+    def draw_add_site_area(self):
+        if not self.is_currently_adding_site:
+            self.is_currently_adding_site = pygui.button(" + ")
+        
+        if self.is_currently_adding_site:
+            if pygui.is_key_pressed(pygui.KEY_ESCAPE):
+                self.is_currently_adding_site = False
+                return
+            
+            pygui.set_keyboard_focus_here()
+            if not pygui.input_text("###Adding new site", self.adding_site, pygui.INPUT_TEXT_FLAGS_ENTER_RETURNS_TRUE):
+                return
+            self.is_currently_adding_site = False
+            
+            if not os.path.exists("ips/" + self.adding_site.value):
+                with open("ips/" + self.adding_site.value, "w") as f:
+                    f.write("")
+                
+                self.refresh_ip_folder()
 
     def draw_live_graph(self):
         if did_clear := pygui.button("Clear"):

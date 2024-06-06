@@ -127,6 +127,9 @@ class PingApp:
         self.is_currently_deleting = None
     
     def refresh_ip_folder(self):
+        if not os.path.exists("ips"):
+            os.mkdir("ips")
+        
         self.file_list = os.listdir("ips")
         
         # Only keep the files that are in the list
@@ -387,7 +390,7 @@ class PingApp:
         file: str
         contents_buf: pygui.String
 
-        has_changed = pygui.input_text_multiline("Editor", contents_buf, pygui.get_content_region_avail())
+        has_changed = pygui.input_text_multiline("###Editor", contents_buf, pygui.get_content_region_avail())
 
         if has_changed:
             with open(f"ips/{file}", "w") as f:

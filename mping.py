@@ -241,7 +241,7 @@ class PingApp:
             if not os.path.exists("ips/" + self.adding_site.value):
                 with open("ips/" + self.adding_site.value, "w") as f:
                     f.write("")
-                
+                self.adding_site.value = ""
                 self.refresh_ip_folder()
 
     def draw_live_graph(self):
@@ -398,14 +398,20 @@ class PingApp:
             self.load_pings_from_strings()
 
     def draw(self):
+        main_viewport = pygui.get_main_viewport()
+        ds = pygui.dock_space_over_viewport(main_viewport)
+
+        pygui.set_next_window_dock_id(ds, pygui.COND_FIRST_USE_EVER)
         if pygui.begin("Load IPs"):
             self.draw_ping_list()
         pygui.end()
 
+        pygui.set_next_window_dock_id(ds, pygui.COND_FIRST_USE_EVER)
         if pygui.begin("Editor"):
             self.draw_editor_window()
         pygui.end()
 
+        pygui.set_next_window_dock_id(ds, pygui.COND_FIRST_USE_EVER)
         if pygui.begin("Live Graph"):
             self.draw_live_graph()
         pygui.end()

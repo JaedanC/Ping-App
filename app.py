@@ -42,7 +42,7 @@ def main():
     glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 2)
     glfw.window_hint(glfw.RESIZABLE, glfw.TRUE)
 
-    window = glfw.create_window(600, 400, "Pygui Ping", None, None)
+    window = glfw.create_window(1600, 900, "Pygui Ping", None, None)
     if window is None:
        print("Failed to create window! Terminating")
        glfw.terminate()

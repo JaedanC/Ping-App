@@ -94,9 +94,5 @@ freeze(
         "icon_resources": [(1, "icons8-signal-96.ico")],
     }],
     data_files=additional_files,
-    options={
-        "bundle_files": 1,
-        "includes": ["pygui"],
-        "dll_excludes": [ "mswsock.dll", "powrprof.dll", "crypt32.dll" ],
-    }
+    options={}
 )

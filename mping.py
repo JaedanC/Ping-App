@@ -418,7 +418,9 @@ class PingApp:
         
         if len(self.loaded_contents) == 0:
             self.current_time = time.time()
-
+        
+        latest_reply = time.time()
+        
         for file_contents in self.loaded_contents:
             graphing_height = pygui.get_frame_height()
             normal_item_padding = pygui.get_style().item_inner_spacing
@@ -447,7 +449,7 @@ class PingApp:
                     ping.draw()
 
                 pygui.push_style_var(pygui.STYLE_VAR_INDENT_SPACING, 24)
-                
+
                 # Since we are creating each of the ping bars separately, how we
                 # handle scrolling has to be done manually. Essentially we set
                 # each childs scroll to be the "scroll_amount". This value is
@@ -465,7 +467,7 @@ class PingApp:
                 self.scroll_amount.value = clamp(self.scroll_amount.value, 0, self.scroll_max.value)
 
                 if scroll_wheel_movement != 0:
-                    if abs(self.scroll_amount.value - self.scroll_max.value) - 10 < 0:
+                    if abs(self.scroll_amount.value - self.scroll_max.value) - 1 < 0:
                         self.scroll_is_locked = pygui.Bool(True)
                     else:
                         self.scroll_is_locked = pygui.Bool(False)
@@ -521,11 +523,11 @@ class PingApp:
                             # pygui.CHILD_FLAGS_BORDER
                         )
 
-                        # if i == 0:
-                        self.scroll_max = pygui.Float(max(
-                            self.scroll_max.value,
-                            pygui.get_scroll_max_x()
-                        ))
+                        if i == 0:
+                            self.scroll_max = pygui.Float(max(
+                                self.scroll_max.value,
+                                pygui.get_scroll_max_x()
+                            ))
 
                         last_draw_time = self.current_time
                         for i, reply in enumerate(ping):
@@ -577,27 +579,20 @@ class PingApp:
                                 pygui.end_tooltip()
                             pygui.pop_style_var(2)
 
+                        # Makes each line the correct length based on time
+                        pygui.same_line()
+                        pygui.dummy(((latest_reply - last_draw_time) * self.width_multiplier.value, 2))
+                        draw_list.add_rect_filled(
+                            pygui.get_item_rect_min(),
+                            pygui.get_item_rect_max(),
+                            pygui.Vec4(1, 1, 1, 0.2).to_u32(),
+                        )
+
                         pygui.end_child()
                         pygui.pop_style_var(4)
                         draw_list.pop_clip_rect()
                     pygui.tree_pop()
                 pygui.pop_style_var()
-
-                # if scroll_changed:
-                #     for i, ping in enumerate(group.get_pings()):
-                #         pygui.begin_child(
-                #             f"Graphing area ### {i} {group_tree_label} {file_contents.get_filename()}",
-                #             # pygui.CHILD_FLAGS_BORDER
-                #         )
-
-                #         pygui.get_window_viewport().
-
-                #         print("Doing this", i, ping, scroll_changed_to)
-
-                #         pygui.set_scroll_x(scroll_changed_to)
-
-                #         pygui.end_child()
-
 
     def draw_colour_editor(self):
         pygui.color_edit3("Success",       PingApp.colour_success,    )#  pygui.COLOR_EDIT_FLAGS_NO_INPUTS)

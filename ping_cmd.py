@@ -167,5 +167,5 @@ class Ping:
             ))
         return output.getvalue()
 
-    def is_running(self) -> bool:
+    def get_running_bool(self) -> bool:
         return self._is_running

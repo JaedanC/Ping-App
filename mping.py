@@ -9,6 +9,14 @@ import pygui
 import datetime
 
 
+def clamp(value, lower_bound, upper_bound):
+    if value < lower_bound:
+        return lower_bound
+    if value > upper_bound:
+        return upper_bound
+    return value
+
+
 class PyguiPing(Ping):
     def __init__(self, destination: str):
         super().__init__(destination)
@@ -237,8 +245,6 @@ class PingApp:
     def __init__(self):
         self.current_time = time.time()
         self.play_all = pygui.Bool(True)
-        self.follow_scroll = pygui.Bool(True)
-        self.previous_frame_scroll = pygui.Int(0)
         self.width_multiplier = pygui.Int(5)
 
         self.file_list = []
@@ -251,6 +257,9 @@ class PingApp:
         self.adding_site = pygui.String()
         self.deleting_site_modal = pygui.Bool(False)
         self.is_currently_deleting = None
+        self.scroll_amount = pygui.Float(0)
+        self.scroll_is_locked = pygui.Bool(True)
+        self.scroll_max = pygui.Float(0)
 
     
     def refresh_ip_folder(self):
@@ -395,21 +404,18 @@ class PingApp:
             self.current_time = time.time()
         
         pygui.same_line()
-        if self.follow_scroll:
-            pygui.text_disabled("Following")
-        else:
-            pygui.text_disabled("Scrolling")
-            pygui.same_line()
-            if pygui.button("Reset"):
-                self.follow_scroll.value = True
-
-        pygui.same_line()
         pygui.push_item_width(100)
         pygui.input_int("Width", self.width_multiplier)
         pygui.pop_item_width()
         pygui.same_line()
         pygui.text("FPS: {:.1f}".format(pygui.get_io().framerate))
-
+        pygui.same_line()
+        pygui.text_disabled("({}/{}) {}".format(
+            int(self.scroll_amount.value),
+            int(self.scroll_max.value),
+            "Following" if self.scroll_is_locked else "Scrolling"
+        ))
+        
         if len(self.loaded_contents) == 0:
             self.current_time = time.time()
 
@@ -420,15 +426,9 @@ class PingApp:
             
             # Following the RHS so that it auto-scrolls. Currently broken
             # since scrolling does not working like it used to.
-            if pygui.get_scroll_x() < self.previous_frame_scroll.value:
-                self.follow_scroll.value = False
-            elif pygui.get_scroll_x() == pygui.get_scroll_max_x():
-                self.follow_scroll.value = True
             if did_clear:
                 for group in file_contents._group_manager._groups:
                     group.clear_pings()
-            else:
-                self.previous_frame_scroll.value = pygui.get_scroll_x()
 
             for group in file_contents.get_groups():
                 if len(group) == 0:
@@ -441,13 +441,38 @@ class PingApp:
                         at_least_one_ping_running_in_group = pygui.Bool(True)
                         break
                 
-                
                 # Do this outside of the drawing loop to ensure that the tick still
                 # occurs regardless of visibility
-                for i, pw in enumerate(group.get_pings()):
-                    pw.draw()
+                for i, ping in enumerate(group.get_pings()):
+                    ping.draw()
 
                 pygui.push_style_var(pygui.STYLE_VAR_INDENT_SPACING, 24)
+                
+                # Since we are creating each of the ping bars separately, how we
+                # handle scrolling has to be done manually. Essentially we set
+                # each childs scroll to be the "scroll_amount". This value is
+                # clamped by [0, scroll_max]. Scroll_max is calculated each
+                # frame; the furthest the first item can scroll. We manually
+                # scroll the window with:
+                #   pygui.get_io().mouse_wheel_h * SCROLL_SPEED_MULT
+                # If the user scrolls completely to the max/right, then the
+                # scroll will "lock" causing the scroll to follow the max.
+                SCROLL_SPEED_MULT = 15
+                scroll_wheel_movement = 0
+                if pygui.is_window_hovered(pygui.HOVERED_FLAGS_CHILD_WINDOWS):
+                    scroll_wheel_movement = pygui.get_io().mouse_wheel_h * SCROLL_SPEED_MULT
+                self.scroll_amount.value -= scroll_wheel_movement
+                self.scroll_amount.value = clamp(self.scroll_amount.value, 0, self.scroll_max.value)
+
+                if scroll_wheel_movement != 0:
+                    if abs(self.scroll_amount.value - self.scroll_max.value) - 10 < 0:
+                        self.scroll_is_locked = pygui.Bool(True)
+                    else:
+                        self.scroll_is_locked = pygui.Bool(False)
+                
+                if self.scroll_is_locked:
+                    self.scroll_amount.value = self.scroll_max.value
+                self.scroll_max.value = 0 # Calculated each frame
                 
                 # Hack that makes the tree nodes taller
                 if pygui.button(f"Clear###clear {group_tree_label} {file_contents.get_filename()}"):
@@ -460,14 +485,14 @@ class PingApp:
                             ping.set_running(at_least_one_ping_running_in_group)
                     # pygui.same_line()
                     
-                    for i, pw in enumerate(group.get_pings()):
-                        pygui.checkbox(f"###Play {i}", pw.get_running_bool())
+                    for i, ping in enumerate(group.get_pings()):
+                        pygui.checkbox(f"###Play {i}", ping.get_running_bool())
                         pygui.same_line()
-                        pygui.checkbox(f"###Show window {i}", pw.get_is_window_visible_bool())
+                        pygui.checkbox(f"###Show window {i}", ping.get_is_window_visible_bool())
                         pygui.same_line()
                         first_part = pygui.get_cursor_pos_x()
 
-                        pygui.text(pw.get_found_destination())
+                        pygui.text(ping.get_found_destination())
                         pygui.same_line(self.get_destination_padding() + first_part + 10)
 
                         draw_list = pygui.get_window_draw_list()
@@ -482,21 +507,28 @@ class PingApp:
                             (cx + pygui.get_content_region_avail()[0], cy + pygui.get_frame_height_with_spacing()),
                             True
                         )
-                        if len(pw) == 0:
-                            pass
 
                         pygui.push_style_var(pygui.STYLE_VAR_WINDOW_PADDING,   (0, 0))
                         pygui.push_style_var(pygui.STYLE_VAR_ITEM_SPACING,     (0, pygui.get_style().item_inner_spacing[1]))
                         pygui.push_style_var(pygui.STYLE_VAR_FRAME_PADDING,    (0, 0))
                         pygui.push_style_var(pygui.STYLE_VAR_FRAME_BORDER_SIZE, 0)
+                        
+                        pygui.set_next_window_scroll((self.scroll_amount.value, -1))
+                        
                         pygui.begin_child(
                             f"Graphing area ### {i} {group_tree_label} {file_contents.get_filename()}",
                             (-1, graphing_height),
                             # pygui.CHILD_FLAGS_BORDER
                         )
-                        # pygui.begin_group()
+
+                        # if i == 0:
+                        self.scroll_max = pygui.Float(max(
+                            self.scroll_max.value,
+                            pygui.get_scroll_max_x()
+                        ))
+
                         last_draw_time = self.current_time
-                        for i, reply in enumerate(pw):
+                        for i, reply in enumerate(ping):
                             if i > 0:
                                 pygui.same_line()
                             
@@ -544,17 +576,29 @@ class PingApp:
                                 pygui.pop_style_color()
                                 pygui.end_tooltip()
                             pygui.pop_style_var(2)
-                        
-                        # pygui.end_group()
+
                         pygui.end_child()
                         pygui.pop_style_var(4)
                         draw_list.pop_clip_rect()
                     pygui.tree_pop()
                 pygui.pop_style_var()
 
-            if self.follow_scroll:
-                pygui.set_scroll_x(pygui.get_scroll_max_x())
-    
+                # if scroll_changed:
+                #     for i, ping in enumerate(group.get_pings()):
+                #         pygui.begin_child(
+                #             f"Graphing area ### {i} {group_tree_label} {file_contents.get_filename()}",
+                #             # pygui.CHILD_FLAGS_BORDER
+                #         )
+
+                #         pygui.get_window_viewport().
+
+                #         print("Doing this", i, ping, scroll_changed_to)
+
+                #         pygui.set_scroll_x(scroll_changed_to)
+
+                #         pygui.end_child()
+
+
     def draw_colour_editor(self):
         pygui.color_edit3("Success",       PingApp.colour_success,    )#  pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
         pygui.color_edit3("High Ping", PingApp.colour_success_high_ping)#, pygui.COLOR_EDIT_FLAGS_NO_INPUTS)

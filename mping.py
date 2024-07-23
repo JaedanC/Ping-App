@@ -419,8 +419,34 @@ class PingApp:
         if len(self.loaded_contents) == 0:
             self.current_time = time.time()
         
-        latest_reply = time.time()
+        # Since we are creating each of the ping bars separately, how we
+        # handle scrolling has to be done manually. Essentially we set
+        # each childs scroll to be the "scroll_amount". This value is
+        # clamped by [0, scroll_max]. Scroll_max is calculated each
+        # frame; the furthest the first item can scroll. We manually
+        # scroll the window with:
+        #   pygui.get_io().mouse_wheel_h * SCROLL_SPEED_MULT
+        # If the user scrolls completely to the max/right, then the
+        # scroll will "lock" causing the scroll to follow the max.
+        SCROLL_SPEED_MULT = 15
+        scroll_wheel_movement = 0
+        if pygui.is_window_hovered(pygui.HOVERED_FLAGS_CHILD_WINDOWS):
+            scroll_wheel_movement = pygui.get_io().mouse_wheel_h * SCROLL_SPEED_MULT
+        self.scroll_amount.value -= scroll_wheel_movement
+        self.scroll_amount.value = clamp(self.scroll_amount.value, 0, self.scroll_max.value)
+
+        if scroll_wheel_movement != 0:
+            if abs(self.scroll_amount.value - self.scroll_max.value) - 1 < 0:
+                self.scroll_is_locked = pygui.Bool(True)
+            else:
+                self.scroll_is_locked = pygui.Bool(False)
         
+        if self.scroll_is_locked:
+            self.scroll_amount.value = self.scroll_max.value
+        self.scroll_max.value = 0 # Calculated each frame
+        
+        latest_reply = time.time()
+
         for file_contents in self.loaded_contents:
             graphing_height = pygui.get_frame_height()
             normal_item_padding = pygui.get_style().item_inner_spacing
@@ -450,31 +476,6 @@ class PingApp:
 
                 pygui.push_style_var(pygui.STYLE_VAR_INDENT_SPACING, 24)
 
-                # Since we are creating each of the ping bars separately, how we
-                # handle scrolling has to be done manually. Essentially we set
-                # each childs scroll to be the "scroll_amount". This value is
-                # clamped by [0, scroll_max]. Scroll_max is calculated each
-                # frame; the furthest the first item can scroll. We manually
-                # scroll the window with:
-                #   pygui.get_io().mouse_wheel_h * SCROLL_SPEED_MULT
-                # If the user scrolls completely to the max/right, then the
-                # scroll will "lock" causing the scroll to follow the max.
-                SCROLL_SPEED_MULT = 15
-                scroll_wheel_movement = 0
-                if pygui.is_window_hovered(pygui.HOVERED_FLAGS_CHILD_WINDOWS):
-                    scroll_wheel_movement = pygui.get_io().mouse_wheel_h * SCROLL_SPEED_MULT
-                self.scroll_amount.value -= scroll_wheel_movement
-                self.scroll_amount.value = clamp(self.scroll_amount.value, 0, self.scroll_max.value)
-
-                if scroll_wheel_movement != 0:
-                    if abs(self.scroll_amount.value - self.scroll_max.value) - 1 < 0:
-                        self.scroll_is_locked = pygui.Bool(True)
-                    else:
-                        self.scroll_is_locked = pygui.Bool(False)
-                
-                if self.scroll_is_locked:
-                    self.scroll_amount.value = self.scroll_max.value
-                self.scroll_max.value = 0 # Calculated each frame
                 
                 # Hack that makes the tree nodes taller
                 if pygui.button(f"Clear###clear {group_tree_label} {file_contents.get_filename()}"):

@@ -9,26 +9,6 @@ from typing import List, Optional
 from io import StringIO
 
 
-def time_to_local_timestamp_str(query_time: float) -> str:
-    time_struct = datetime.datetime.fromtimestamp(query_time)
-    # I love ChatGPT for nuggets like this
-    def get_ordinal_suffix(day):
-        if 4 <= day <= 20 or 24 <= day <= 30:
-            return "th"
-        else:
-            return ["st", "nd", "rd"][day % 10 - 1]
-
-    # Format string for the desired output
-    return time_struct.strftime("%A %d{} %b %Y %I:%M:%S%p".format(
-        get_ordinal_suffix(time_struct.day))
-    )
-
-
-def time_to_iso(query_time: float) -> str:
-    time_struct = datetime.datetime.fromtimestamp(query_time)
-    return time_struct.isoformat()
-
-
 def time_to_excel(query_time: float) -> str:
     # d/mm/yyyy h:mm:ss
     time_struct = datetime.datetime.fromtimestamp(query_time)

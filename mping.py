@@ -7,6 +7,7 @@ import ipaddress
 from ping_cmd import Ping
 import pygui
 import datetime
+from ping_logger import PingLogger
 
 
 def clamp(value, lower_bound, upper_bound):
@@ -15,6 +16,15 @@ def clamp(value, lower_bound, upper_bound):
     if value > upper_bound:
         return upper_bound
     return value
+
+
+def help_marker(desc: str):
+    pygui.text_disabled("(?)")
+    if pygui.is_item_hovered(pygui.HOVERED_FLAGS_DELAY_SHORT) and pygui.begin_tooltip():
+        pygui.push_text_wrap_pos(pygui.get_font_size() * 35)
+        pygui.text_unformatted(desc)
+        pygui.pop_text_wrap_pos()
+        pygui.end_tooltip()
 
 
 class PyguiPing(Ping):
@@ -261,6 +271,10 @@ class PingApp:
         self.scroll_is_locked = pygui.Bool(True)
         self.scroll_max = pygui.Float(0)
 
+        self.ping_logger = PingLogger()
+        self.use_logging = pygui.Bool(False)
+        self.use_rolling_buffer = pygui.Bool(False)
+        self.rolling_buffer_seconds = pygui.Int(600)
     
     def refresh_ip_folder(self):
         if not os.path.exists("ips"):
@@ -384,6 +398,51 @@ class PingApp:
         return longest
 
     def draw_live_graph(self):
+        if pygui.tree_node("Settings"):
+            pygui.push_item_width(100)
+            pygui.input_int("Width Multiplier", self.width_multiplier)
+            pygui.pop_item_width()
+
+            pygui.checkbox("Enable Logging", self.use_logging)
+            if self.use_logging and pygui.get_frame_count() % 60 - 30 == 0:
+                time_to_save = time.time()
+                for file_contents in self.loaded_contents:
+                    for group in file_contents.get_groups():
+                        for ping in group.get_pings():
+                            path = [
+                                file_contents.get_filename(),
+                                group.get_group_name() or file_contents.get_filename(),
+                                ping.get_destination() + ".csv"
+                            ]
+                            self.ping_logger.log_replies(path, ping.get_replies())
+                self.ping_logger.set_last_time_synced(time_to_save)
+            pygui.same_line()
+            help_marker("Saves results to logging/<file>/<group>/<host> as a csv")
+            pygui.same_line()
+            if pygui.button("Open folder"):
+                # Windows only
+                os.startfile(os.path.abspath(self.ping_logger.get_logging_directory()))
+            
+            pygui.checkbox("Enable Rolling Buffer", self.use_rolling_buffer)
+            pygui.same_line()
+            pygui.push_item_width(100)
+            pygui.input_int("seconds###Rolling Buffer seconds", self.rolling_buffer_seconds)
+            pygui.pop_item_width()
+            pygui.same_line()
+            help_marker("May improve performance for longer sessions. Consider " + \
+                        "enabling logging if you need a lot of data")
+            if self.use_rolling_buffer:
+                if (time.time() - self.current_time) > self.rolling_buffer_seconds.value:
+                    self.current_time = time.time() - self.rolling_buffer_seconds.value
+            # Delete any pings below the rolling buffer
+            if pygui.get_frame_count() % 120 == 0:
+                for file_contents in self.loaded_contents:
+                    for group in file_contents.get_groups():
+                        for ping in group.get_pings():
+                            ping.clear_before(self.current_time)
+            pygui.tree_pop()
+        
+
         # Window widgets
         is_play_all = pygui.Bool(False)
         for content in self.loaded_contents:
@@ -404,10 +463,6 @@ class PingApp:
             self.current_time = time.time()
         
         pygui.same_line()
-        pygui.push_item_width(100)
-        pygui.input_int("Width", self.width_multiplier)
-        pygui.pop_item_width()
-        pygui.same_line()
         pygui.text("FPS: {:.1f}".format(pygui.get_io().framerate))
         pygui.same_line()
         pygui.text_disabled("({}/{}) {}".format(
@@ -415,7 +470,8 @@ class PingApp:
             int(self.scroll_max.value),
             "Following" if self.scroll_is_locked else "Scrolling"
         ))
-        
+        pygui.separator()
+            
         if len(self.loaded_contents) == 0:
             self.current_time = time.time()
         

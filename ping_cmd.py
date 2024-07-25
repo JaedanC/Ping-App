@@ -1,20 +1,47 @@
 from __future__ import annotations
+import datetime
 import os
 import re
 import threading
-from enum import Enum
+import time
+from enum import Enum, auto
 from typing import List, Optional
 from io import StringIO
-import time
+
+
+def time_to_local_timestamp_str(query_time: float) -> str:
+    time_struct = datetime.datetime.fromtimestamp(query_time)
+    # I love ChatGPT for nuggets like this
+    def get_ordinal_suffix(day):
+        if 4 <= day <= 20 or 24 <= day <= 30:
+            return "th"
+        else:
+            return ["st", "nd", "rd"][day % 10 - 1]
+
+    # Format string for the desired output
+    return time_struct.strftime("%A %d{} %b %Y %I:%M:%S%p".format(
+        get_ordinal_suffix(time_struct.day))
+    )
+
+
+def time_to_iso(query_time: float) -> str:
+    time_struct = datetime.datetime.fromtimestamp(query_time)
+    return time_struct.isoformat()
+
+
+def time_to_excel(query_time: float) -> str:
+    # d/mm/yyyy h:mm:ss
+    time_struct = datetime.datetime.fromtimestamp(query_time)
+    return time_struct.strftime("%d/%m/%Y %H:%M:%S")
 
 
 class Ping:
     class ReplyType(Enum):
-        Success = 0
-        RequestTimedOut = 1
-        DestinationHostUnreachable = 2
-        DestinationNetUnreachable = 3
-        GeneralFailure = 4
+        Success = auto()
+        RequestTimedOut = auto()
+        DestinationHostUnreachable = auto()
+        DestinationNetUnreachable = auto()
+        GeneralFailure = auto()
     
     class Reply:
         def __init__(
@@ -35,6 +62,18 @@ class Ping:
         
         def __repr__(self):
             return self.line
+    
+        def as_csv(self):
+            return ",".join([
+                time_to_excel(self.start_time),
+                self.reply_type.name,
+                str(self.response_ip or ""),
+                "" if self.response_time is None else str(self.response_time) + "ms",
+            ])
+        
+        @staticmethod
+        def csv_headers():
+            return "Timestamp,Reply,IP,Response Time"
 
     def __init__(self, destination: str):
         self._destination = destination
@@ -129,6 +168,18 @@ class Ping:
     def clear(self):
         self._replies.clear()
 
+    def clear_before(self, pings_before_to_delete: int):
+        to_pop = 0
+        for reply in self._replies:
+            if reply.end_time < pings_before_to_delete:
+                to_pop += 1
+            else:
+                break
+        
+        while to_pop > 0:
+            self._replies.pop(0)
+            to_pop -= 1
+
     def get_found_ip(self) -> str:
         return self._found_ip or self._destination
     
@@ -169,3 +220,6 @@ class Ping:
 
     def get_running_bool(self) -> bool:
         return self._is_running
+
+    def get_replies(self) -> List[Ping.Reply]:
+        return self._replies

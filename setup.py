@@ -40,16 +40,16 @@ def collect_files(root_folder) -> List[Tuple[str, List[str]]]:
     for base, _, filenames in os.walk(root_folder):
         for filename in filenames:
             src_files.append((base, os.path.join(base, filename)))
-    
-    # Aggregate in src_files in the same directory to the one 
+
+    # Aggregate in src_files in the same directory to the one
     # destination_directory
     files_consolidated = {}
     for destination_directory, file in src_files:
         if destination_directory not in files_consolidated:
             files_consolidated[destination_directory] = []
-        
+
         files_consolidated[destination_directory].append(file)
-    
+
     freeze_format = []
     for destination_directory, src_paths in files_consolidated.items():
         freeze_format.append((destination_directory, src_paths))
@@ -65,7 +65,7 @@ def filter_missing_files(files_structure: List[Tuple[str, List[str]]]):
                 continue
 
             keep_files.append(file)
-        
+
         if len(keep_files) == 0:
             continue
 

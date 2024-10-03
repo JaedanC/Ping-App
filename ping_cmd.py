@@ -22,10 +22,11 @@ class Ping:
         DestinationHostUnreachable = auto()
         DestinationNetUnreachable = auto()
         GeneralFailure = auto()
-    
+
     class Reply:
         def __init__(
                 self,
+                destination: str,
                 reply_type: Ping.ReplyType,
                 start_time: float,
                 end_time: float,
@@ -33,27 +34,28 @@ class Ping:
                 response_time: Optional[int] = None,
                 response_ip: Optional[str] = None,
             ):
+            self.destination = destination
             self.reply_type = reply_type
             self.start_time = start_time
             self.end_time = end_time
             self.line = line
             self.response_time = response_time
             self.response_ip = response_ip
-        
+
         def __repr__(self):
             return self.line
-    
+
         def as_csv(self):
             return ",".join([
                 time_to_excel(self.start_time),
                 self.reply_type.name,
-                str(self.response_ip or ""),
-                "" if self.response_time is None else str(self.response_time) + "ms",
+                str(self.destination or self.response_ip or ""),
+                "" if self.response_time is None else str(self.response_time),
             ])
-        
+
         @staticmethod
         def csv_headers():
-            return "Timestamp,Reply,IP,Response Time"
+            return "Timestamp,Reply,IP,Response Time (ms)"
 
     def __init__(self, destination: str):
         self._destination = destination
@@ -62,7 +64,10 @@ class Ping:
         self._found_ip = None
         self._is_running = False
         self._thread_done = False
-    
+        # For linting
+        self._t = None
+        self._i = 0
+
     def __len__(self) -> int:
         return len(self._replies)
 
@@ -93,16 +98,16 @@ class Ping:
         dhu_regex = re.compile(r"Reply from (.*): Destination host unreachable\.")
         dnu_regex = re.compile(r".*Destination net unreachable\.")
         gf_regex =  re.compile(r"General failure\..*")
-        
+
         for line in ping_result.split("\n"):
             fd_match = fd_regex.match(line)
             if fd_match is not None:
                 self._found_destination = fd_match.group(1)
-            
+
                 fid_match = fip_regex.match(fd_match.group(0))
                 if fid_match is not None:
                     self._found_ip = fid_match.group(1)
-            
+
             reply_type = None
             response_ip = None
             response_time = None
@@ -119,9 +124,10 @@ class Ping:
                 reply_type = Ping.ReplyType.DestinationNetUnreachable
             elif gf_regex.match(line):
                 reply_type = Ping.ReplyType.GeneralFailure
-            
+
             if reply_type is not None:
                 self._replies.append(Ping.Reply(
+                    self._destination,
                     reply_type,
                     start_time,
                     end_time,
@@ -129,18 +135,19 @@ class Ping:
                     response_time,
                     response_ip
                 ))
-        
+
         self._thread_done = True
 
     def tick(self):
         if self._thread_done:
+            assert self._t is not None
             self._is_running = False
             self._thread_done = False
             self._t.join()
-        
+
         if self._is_running:
             return
-        
+
         self._is_running = True
         self._t = threading.Thread(target=self._thread_ping)
         self._t.start()
@@ -155,14 +162,14 @@ class Ping:
                 to_pop += 1
             else:
                 break
-        
+
         while to_pop > 0:
             self._replies.pop(0)
             to_pop -= 1
 
     def get_found_ip(self) -> str:
         return self._found_ip or self._destination
-    
+
     def get_found_destination(self) -> str:
         return self._found_destination or self._destination
 
@@ -190,7 +197,7 @@ class Ping:
             100 - (n_successes/packets) * 100
         ))
         if n_successes > 0:
-            output.write(f"Approximate round trip times in milli-seconds:\n")
+            output.write("Approximate round trip times in milli-seconds:\n")
             output.write("    Minimum = {:.0f}ms, Maximum = {:.0f}ms, Average = {:.0f}ms\n".format(
                 min(success_times),
                 max(success_times),

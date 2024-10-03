@@ -1,13 +1,13 @@
 from __future__ import annotations
-from typing import List, Dict, Set, Any
+from typing import List, Dict
+import datetime
+import ipaddress
 import os
 import time
-import ipaddress
 
 from ping_cmd import Ping
-import pygui
-import datetime
 from ping_logger import PingLogger
+import pygui
 
 
 def clamp(value, lower_bound, upper_bound):
@@ -43,7 +43,7 @@ class PyguiPing(Ping):
 
         if not self._show_ping_window:
             return
-        
+
         window_animation = "|/-\\"[int(pygui.get_time() / 0.5) % 3]
         window_title = "{} {}###{}".format(
             self.get_found_destination(),
@@ -79,13 +79,13 @@ class PyguiPing(Ping):
                 self._follow_scroll.value = True
             if not did_clear:
                 self._previous_frame_scroll = pygui.get_scroll_y()
-            
+
             # Demonstrate using clipper for large vertical lists
             clipper = pygui.ImGuiListClipper.create()
 
             # This is our first example of not being able to share heap objects
             # across the dll. I need to get a pointer to a valid type that it
-            # creates, not me. This requires adding a custom constructor and 
+            # creates, not me. This requires adding a custom constructor and
             # destructor for the ImGuiListClipper class.
             clipper.begin(len(self))
             while clipper.step():
@@ -101,18 +101,21 @@ class PyguiPing(Ping):
                         pygui.push_style_color(pygui.COL_TEXT, (1, 0, 0, 1))
                     else:
                         pygui.push_style_color(pygui.COL_TEXT, pygui.get_style_color_vec4(pygui.COL_TEXT))
-                    
+
+                    start_time = datetime.datetime.fromtimestamp(int(reply.start_time))
+                    start_time_str = start_time.strftime("%d/%m/%y @ %H:%M:%S%p")
+
                     pygui.text("[{}] {}".format(
-                        row_n,
+                        start_time_str,
                         reply.line
                     ))
-                    
+
                     pygui.pop_style_color()
             clipper.destroy()
 
             if self._follow_scroll:
                 pygui.set_scroll_y(pygui.get_scroll_max_y())
-            
+
             pygui.end_child()
         pygui.end()
 
@@ -121,7 +124,7 @@ class PyguiPing(Ping):
 
     def get_running_bool(self) -> pygui.Bool:
         return self._do_tick
-    
+
     def get_is_window_visible_bool(self) -> pygui.Bool:
         return self._show_ping_window
 
@@ -136,42 +139,42 @@ class IPFileContent:
             self._group_name = group_name
             self.ips: List[str] = []
             self._pygui_pings: List[PyguiPing] = []
-        
+
         def __len__(self):
             return len(self.ips)
 
         def add_ip(self, ip: str):
             self.ips.append(ip)
-        
+
         def add_ips(self, ips: List[str]):
             self.ips += ips
-        
+
         def clear_pings(self):
             for ping in self._pygui_pings:
                 ping.clear()
-        
+
         def get_pings(self) -> List[PyguiPing]:
             return self._pygui_pings
 
         def get_group_name(self) -> str:
             return self._group_name
-    
+
     class IPGroupManager:
         def __init__(self):
             self._current_group = IPFileContent.IPGroup()
             self._groups: List[IPFileContent.IPGroup] = []
-        
+
         def start_new_group(self, group_name: str):
             self._groups.append(self._current_group)
             self._current_group = IPFileContent.IPGroup(group_name)
-        
+
         def finish_creating_groups(self):
             if len(self._current_group) > 0:
                 self._groups.append(self._current_group)
-        
+
         def add_ip(self, ip: str):
             self._current_group.add_ip(ip)
-        
+
         def add_ips(self, ips: List[str]):
             self._current_group.add_ips(ips)
 
@@ -179,12 +182,12 @@ class IPFileContent:
             existing_pings_lookup = {p.get_destination(): p for p in existing_ping_list}
             for group in self._groups:
                 for ip in group.ips:
-                    group._pygui_pings.append(existing_pings_lookup.get(ip, PyguiPing(ip)))
-        
+                    group.get_pings().append(existing_pings_lookup.get(ip, PyguiPing(ip)))
+
         def get_all_pygui_pings_from_groups(self) -> List[PyguiPing]:
             pings: List[PyguiPing] = []
             for group in self._groups:
-                pings += group._pygui_pings
+                pings += group.get_pings()
             return pings
 
         def get_groups(self):
@@ -203,6 +206,9 @@ class IPFileContent:
         if content != self._content.value:
             self._content = pygui.String(content, buffer_size=len(content) + 2056)
             self.content_changed()
+
+    def get_group_manager(self) -> IPFileContent.IPGroupManager:
+        return self._group_manager
 
     def content_changed(self):
         self._group_manager = IPFileContent.IPGroupManager()
@@ -224,7 +230,7 @@ class IPFileContent:
                     print(e)
             else:
                 self._group_manager.add_ip(entry)
-        
+
         self._group_manager.finish_creating_groups()
         self._group_manager.create_pygui_pings_missing_from(self.pings)
         self.pings = self._group_manager.get_all_pygui_pings_from_groups()
@@ -239,7 +245,7 @@ class IPFileContent:
                 longest,
                 pygui.calc_text_size(ping.get_found_destination() or "")[0] + 10
             )
-        return longest      
+        return longest
 
     def get_groups(self) -> List[IPGroup]:
         return self._group_manager.get_groups()
@@ -273,21 +279,23 @@ class PingApp:
 
         self.ping_logger = PingLogger()
         self.use_logging = pygui.Bool(False)
+        self.use_logging_clicked_time = time.time()
+        self.rolling_buffer_changed_timer = 120
         self.use_rolling_buffer = pygui.Bool(False)
         self.rolling_buffer_seconds = pygui.Int(600)
-    
+
     def refresh_ip_folder(self):
         if not os.path.exists("ips"):
             os.makedirs("ips")
 
         self.file_list = os.listdir("ips")
-        
+
         # Only keep the files that are in the list
         seen_files: Dict[str, pygui.Bool] = {}
         for file in self.file_list:
             seen_files[file] = self.selected_files.get(file) or pygui.Bool(False)
         self.selected_files = seen_files
-    
+
     def load_contents_from_selected_files(self):
         existing_file_content = {c.get_filename(): c for c in self.loaded_contents}
         content_to_keep: List[IPFileContent] = []
@@ -296,12 +304,12 @@ class PingApp:
                 continue
 
             file_content = existing_file_content.get(file) or IPFileContent(file)
-            with open(f"ips/{file}") as f:
+            with open(f"ips/{file}", encoding="utf-8") as f:
                 file_content.set_content(f.read())
-            
+
             content_to_keep.append(file_content)
         self.loaded_contents = content_to_keep
-    
+
     def draw_ping_list(self):
         do_reload = False
 
@@ -316,17 +324,17 @@ class PingApp:
                 self.renaming_site = pygui.String(file)
                 pygui.set_keyboard_focus_here()
             pygui.same_line()
-            
+
             if self.is_currently_renaming == file:
                 if pygui.is_key_pressed(pygui.KEY_ESCAPE):
                     self.is_currently_renaming = None
-                
+
                 if pygui.input_text("###Renaming file", self.renaming_site, pygui.INPUT_TEXT_FLAGS_ENTER_RETURNS_TRUE):
                     print("Rename", file, "to", self.renaming_site.value)
                     self.is_currently_renaming = None
             else:
                 do_reload = pygui.selectable_bool_ptr(file, is_selected, pygui.SELECTABLE_FLAGS_ALLOW_OVERLAP) or do_reload
-            
+
             pygui.same_line(pygui.get_content_region_avail()[0] - 15)
             if pygui.small_button("x###Delete button " + file):
                 self.is_currently_deleting = file
@@ -346,11 +354,10 @@ class PingApp:
             if pygui.button("Cancel") or pygui.is_key_pressed(pygui.KEY_ESCAPE):
                 self.deleting_site_modal.value = False
             pygui.end_popup()
-        
+
         if do_reload:
             self.load_contents_from_selected_files()
-            # self.load_pings_from_strings()
-    
+
     def draw_editor_window(self):
         if len(self.loaded_contents) == 0:
             return
@@ -366,27 +373,26 @@ class PingApp:
         )
 
         if has_changed:
-            with open(f"ips/{file}", "w") as f:
+            with open(f"ips/{file}", "w", encoding="utf-8") as f:
                 f.write(contents_buf.value)
             loaded.content_changed()
-            # self.load_pings_from_strings()
 
     def draw_add_site_area(self):
         if not self.is_currently_adding_site:
             self.is_currently_adding_site = pygui.button(" + ")
-        
+
         if self.is_currently_adding_site:
             if pygui.is_key_pressed(pygui.KEY_ESCAPE):
                 self.is_currently_adding_site = False
                 return
-            
+
             pygui.set_keyboard_focus_here()
             if not pygui.input_text("###Adding new site", self.adding_site, pygui.INPUT_TEXT_FLAGS_ENTER_RETURNS_TRUE):
                 return
             self.is_currently_adding_site = False
-            
+
             if not os.path.exists("ips/" + self.adding_site.value):
-                with open("ips/" + self.adding_site.value, "w") as f:
+                with open("ips/" + self.adding_site.value, "w", encoding="utf-8") as f:
                     f.write("")
                 self.adding_site.value = ""
                 self.refresh_ip_folder()
@@ -403,18 +409,20 @@ class PingApp:
             pygui.input_int("Width Multiplier", self.width_multiplier)
             pygui.pop_item_width()
 
-            pygui.checkbox("Enable Logging", self.use_logging)
+            if pygui.checkbox("Enable Logging", self.use_logging):
+                self.use_logging_clicked_time = time.time()
+
             if self.use_logging and pygui.get_frame_count() % 60 - 30 == 0:
                 time_to_save = time.time()
+                when_logging_clicked_str = datetime.datetime.fromtimestamp(self.use_logging_clicked_time).strftime(r"%d-%m-%Y")
                 for file_contents in self.loaded_contents:
                     for group in file_contents.get_groups():
                         for ping in group.get_pings():
                             path = [
-                                file_contents.get_filename(),
-                                group.get_group_name() or file_contents.get_filename(),
-                                ping.get_destination() + ".csv"
+                                "{} {}.csv".format(file_contents.get_filename(), when_logging_clicked_str),
                             ]
-                            self.ping_logger.log_replies(path, ping.get_replies())
+                            self.ping_logger.log_replies_single_file(path, ping.get_replies())
+
                 self.ping_logger.set_last_time_synced(time_to_save)
             pygui.same_line()
             help_marker("Saves results to logging/<file>/<group>/<host> as a csv")
@@ -422,26 +430,30 @@ class PingApp:
             if pygui.button("Open folder"):
                 # Windows only
                 os.startfile(os.path.abspath(self.ping_logger.get_logging_directory()))
-            
+
             pygui.checkbox("Enable Rolling Buffer", self.use_rolling_buffer)
             pygui.same_line()
             pygui.push_item_width(100)
-            pygui.input_int("seconds###Rolling Buffer seconds", self.rolling_buffer_seconds)
+            did_change = pygui.input_int("seconds###Rolling Buffer seconds", self.rolling_buffer_seconds)
+            if did_change:
+                self.rolling_buffer_changed_timer = 120
+            self.rolling_buffer_changed_timer -= 1
             pygui.pop_item_width()
             pygui.same_line()
             help_marker("May improve performance for longer sessions. Consider " + \
                         "enabling logging if you need a lot of data")
-            if self.use_rolling_buffer:
+            # Delete any pings below the rolling buffer
+            if self.use_rolling_buffer and self.rolling_buffer_changed_timer < 0:
                 if (time.time() - self.current_time) > self.rolling_buffer_seconds.value:
                     self.current_time = time.time() - self.rolling_buffer_seconds.value
-            # Delete any pings below the rolling buffer
-            if pygui.get_frame_count() % 120 == 0:
+
+            if pygui.get_frame_count() % 120 == 0 and self.rolling_buffer_changed_timer < 0:
                 for file_contents in self.loaded_contents:
                     for group in file_contents.get_groups():
                         for ping in group.get_pings():
                             ping.clear_before(self.current_time)
             pygui.tree_pop()
-        
+
 
         # Window widgets
         is_play_all = pygui.Bool(False)
@@ -456,12 +468,12 @@ class PingApp:
                 for group in content.get_groups():
                     for ping in group.get_pings():
                         ping.set_running(is_play_all)
-        
+
         pygui.same_line()
-        
+
         if did_clear := pygui.button("Clear"):
             self.current_time = time.time()
-        
+
         pygui.same_line()
         pygui.text("FPS: {:.1f}".format(pygui.get_io().framerate))
         pygui.same_line()
@@ -471,10 +483,10 @@ class PingApp:
             "Following" if self.scroll_is_locked else "Scrolling"
         ))
         pygui.separator()
-            
+
         if len(self.loaded_contents) == 0:
             self.current_time = time.time()
-        
+
         # Since we are creating each of the ping bars separately, how we
         # handle scrolling has to be done manually. Essentially we set
         # each childs scroll to be the "scroll_amount". This value is
@@ -496,35 +508,35 @@ class PingApp:
                 self.scroll_is_locked = pygui.Bool(True)
             else:
                 self.scroll_is_locked = pygui.Bool(False)
-        
+
         if self.scroll_is_locked:
             self.scroll_amount.value = self.scroll_max.value
         self.scroll_max.value = 0 # Calculated each frame
-        
+
         latest_reply = time.time()
 
         for file_contents in self.loaded_contents:
             graphing_height = pygui.get_frame_height()
             normal_item_padding = pygui.get_style().item_inner_spacing
             normal_window_padding = pygui.get_style().window_padding
-            
+
             # Following the RHS so that it auto-scrolls. Currently broken
             # since scrolling does not working like it used to.
             if did_clear:
-                for group in file_contents._group_manager._groups:
+                for group in file_contents.get_group_manager().get_groups():
                     group.clear_pings()
 
             for group in file_contents.get_groups():
                 if len(group) == 0:
                     continue
-                
+
                 group_tree_label = group.get_group_name() or file_contents.get_filename()
                 at_least_one_ping_running_in_group = pygui.Bool(False)
                 for ping in group.get_pings():
                     if ping.get_running_bool():
                         at_least_one_ping_running_in_group = pygui.Bool(True)
                         break
-                
+
                 # Do this outside of the drawing loop to ensure that the tick still
                 # occurs regardless of visibility
                 for i, ping in enumerate(group.get_pings()):
@@ -532,7 +544,7 @@ class PingApp:
 
                 pygui.push_style_var(pygui.STYLE_VAR_INDENT_SPACING, 24)
 
-                
+
                 # Hack that makes the tree nodes taller
                 if pygui.button(f"Clear###clear {group_tree_label} {file_contents.get_filename()}"):
                     group.clear_pings()
@@ -540,10 +552,10 @@ class PingApp:
                 if pygui.tree_node(group_tree_label, pygui.TREE_NODE_FLAGS_DEFAULT_OPEN):
                     # Group Widgets
                     if pygui.checkbox(f"###Play Group{group_tree_label} {file_contents.get_filename()}", at_least_one_ping_running_in_group):
-                        for ping in group._pygui_pings:
+                        for ping in group.get_pings():
                             ping.set_running(at_least_one_ping_running_in_group)
                     # pygui.same_line()
-                    
+
                     for i, ping in enumerate(group.get_pings()):
                         pygui.checkbox(f"###Play {i}", ping.get_running_bool())
                         pygui.same_line()
@@ -571,9 +583,9 @@ class PingApp:
                         pygui.push_style_var(pygui.STYLE_VAR_ITEM_SPACING,     (0, pygui.get_style().item_inner_spacing[1]))
                         pygui.push_style_var(pygui.STYLE_VAR_FRAME_PADDING,    (0, 0))
                         pygui.push_style_var(pygui.STYLE_VAR_FRAME_BORDER_SIZE, 0)
-                        
+
                         pygui.set_next_window_scroll((self.scroll_amount.value, -1))
-                        
+
                         pygui.begin_child(
                             f"Graphing area ### {i} {group_tree_label} {file_contents.get_filename()}",
                             (-1, graphing_height),
@@ -590,7 +602,7 @@ class PingApp:
                         for i, reply in enumerate(ping):
                             if i > 0:
                                 pygui.same_line()
-                            
+
                             if reply.reply_type is Ping.ReplyType.Success:
                                 if reply.response_time > 100: # 100ms
                                     colour = PingApp.colour_success_high_ping.to_u32()
@@ -604,11 +616,11 @@ class PingApp:
                                 colour = PingApp.colour_general_failure.to_u32()
                             else:
                                 colour = PingApp.colour_timeout.to_u32()
-                            
+
                             gap_width = reply.start_time - last_draw_time
                             pygui.dummy((gap_width * self.width_multiplier.value, pygui.get_content_region_avail()[1]))
                             last_draw_time = reply.start_time
-                            
+
                             pygui.same_line()
 
                             ping_width = reply.end_time - last_draw_time
@@ -629,7 +641,7 @@ class PingApp:
                             pygui.push_style_var(pygui.STYLE_VAR_WINDOW_PADDING, normal_window_padding)
                             if pygui.is_item_hovered() and pygui.begin_tooltip():
                                 start_time = datetime.datetime.fromtimestamp(int(reply.start_time))
-                                pygui.text(start_time.strftime("%a %d @ %H:%M:%S%p"))
+                                pygui.text(start_time.strftime("%a %d/%m/%Y @ %H:%M:%S%p"))
                                 pygui.push_style_color(pygui.COL_TEXT, colour)
                                 pygui.text(f"[{i}] {reply.line}")
                                 pygui.pop_style_color()
@@ -652,17 +664,17 @@ class PingApp:
                 pygui.pop_style_var()
 
     def draw_colour_editor(self):
-        pygui.color_edit3("Success",       PingApp.colour_success,    )#  pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
-        pygui.color_edit3("High Ping", PingApp.colour_success_high_ping)#, pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
-        pygui.color_edit3("Timeout",       PingApp.colour_timeout,    )#  pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
-        pass
+        pygui.color_edit3("Success",   PingApp.colour_success)           # pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
+        pygui.color_edit3("High Ping", PingApp.colour_success_high_ping) # pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
+        pygui.color_edit3("Timeout",   PingApp.colour_timeout)           # pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
 
     def draw(self):
         main_viewport = pygui.get_main_viewport()
-        ds = pygui.dock_space_over_viewport(main_viewport)
+        id_ = pygui.get_id("Main view")
+        ds = pygui.dock_space_over_viewport(id_, main_viewport)
 
         pygui.set_next_window_dock_id(ds, pygui.COND_FIRST_USE_EVER)
-        if pygui.begin("Load IPs"):
+        if pygui.begin("Load IPs", None):
             self.draw_ping_list()
         pygui.end()
 

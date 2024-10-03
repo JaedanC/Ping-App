@@ -11,6 +11,9 @@
 # VM
 netbox
 sql8
+10.131.154.4
+int-waratahdhcp
+10.130.1.232
 
 # VPNC
 10.130.1.244

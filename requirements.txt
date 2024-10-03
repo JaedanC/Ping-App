@@ -1,4 +1,3 @@
 glfw
 Pillow
-py2exe
 PyOpenGL

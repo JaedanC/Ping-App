@@ -51,6 +51,7 @@ class PyguiPing(Ping):
             self.get_destination(),
         )
 
+        pygui.set_next_window_size((600, 350), pygui.COND_FIRST_USE_EVER)
         if pygui.begin(window_title, self._show_ping_window):
             pygui.checkbox("Play", self._do_tick)
             pygui.same_line()
@@ -71,7 +72,7 @@ class PyguiPing(Ping):
 
             if self._show_stats:
                 pygui.text(self.get_stats())
-            pygui.begin_child(self.get_found_ip(), (-1, -1), pygui.CHILD_FLAGS_BORDER)
+            pygui.begin_child(self.get_found_ip(), (-1, -1), pygui.CHILD_FLAGS_BORDERS)
 
             if pygui.get_scroll_y() < self._previous_frame_scroll:
                 self._follow_scroll.value = False

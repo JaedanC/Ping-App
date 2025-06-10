@@ -413,18 +413,6 @@ class PingApp:
             if pygui.checkbox("Enable Logging", self.use_logging):
                 self.use_logging_clicked_time = time.time()
 
-            if self.use_logging and pygui.get_frame_count() % 60 - 30 == 0:
-                time_to_save = time.time()
-                when_logging_clicked_str = datetime.datetime.fromtimestamp(self.use_logging_clicked_time).strftime(r"%d-%m-%Y")
-                for file_contents in self.loaded_contents:
-                    for group in file_contents.get_groups():
-                        for ping in group.get_pings():
-                            path = [
-                                "{} {}.csv".format(file_contents.get_filename(), when_logging_clicked_str),
-                            ]
-                            self.ping_logger.log_replies_single_file(path, ping.get_replies())
-
-                self.ping_logger.set_last_time_synced(time_to_save)
             pygui.same_line()
             help_marker("Saves results to logging/<file>/<group>/<host> as a csv")
             pygui.same_line()
@@ -438,23 +426,36 @@ class PingApp:
             did_change = pygui.input_int("seconds###Rolling Buffer seconds", self.rolling_buffer_seconds)
             if did_change:
                 self.rolling_buffer_changed_timer = 120
-            self.rolling_buffer_changed_timer -= 1
             pygui.pop_item_width()
             pygui.same_line()
             help_marker("May improve performance for longer sessions. Consider " + \
                         "enabling logging if you need a lot of data")
-            # Delete any pings below the rolling buffer
-            if self.use_rolling_buffer and self.rolling_buffer_changed_timer < 0:
-                if (time.time() - self.current_time) > self.rolling_buffer_seconds.value:
-                    self.current_time = time.time() - self.rolling_buffer_seconds.value
-
-            if pygui.get_frame_count() % 120 == 0 and self.rolling_buffer_changed_timer < 0:
-                for file_contents in self.loaded_contents:
-                    for group in file_contents.get_groups():
-                        for ping in group.get_pings():
-                            ping.clear_before(self.current_time)
             pygui.tree_pop()
 
+        if self.use_logging and pygui.get_frame_count() % 60 - 30 == 0:
+            time_to_save = time.time()
+            when_logging_clicked_str = datetime.datetime.fromtimestamp(self.use_logging_clicked_time).strftime(r"%d-%m-%Y")
+            for file_contents in self.loaded_contents:
+                for group in file_contents.get_groups():
+                    for ping in group.get_pings():
+                        path = [
+                            "{} {}.csv".format(file_contents.get_filename(), when_logging_clicked_str),
+                        ]
+                        self.ping_logger.log_replies_single_file(path, ping.get_replies())
+
+            self.ping_logger.set_last_time_synced(time_to_save)
+
+        # Delete any pings below the rolling buffer
+        self.rolling_buffer_changed_timer -= 1
+        if self.use_rolling_buffer and self.rolling_buffer_changed_timer < 0:
+            if (time.time() - self.current_time) > self.rolling_buffer_seconds.value:
+                self.current_time = time.time() - self.rolling_buffer_seconds.value
+
+        if pygui.get_frame_count() % 120 == 0 and self.rolling_buffer_changed_timer < 0:
+            for file_contents in self.loaded_contents:
+                for group in file_contents.get_groups():
+                    for ping in group.get_pings():
+                        ping.clear_before(self.current_time)
 
         # Window widgets
         is_play_all = pygui.Bool(False)
@@ -527,9 +528,10 @@ class PingApp:
                 for group in file_contents.get_group_manager().get_groups():
                     group.clear_pings()
 
-            for group in file_contents.get_groups():
+            for i, group in enumerate(file_contents.get_groups()):
                 if len(group) == 0:
                     continue
+                pygui.push_id(i)
 
                 group_tree_label = group.get_group_name() or file_contents.get_filename()
                 at_least_one_ping_running_in_group = pygui.Bool(False)
@@ -663,6 +665,7 @@ class PingApp:
                         draw_list.pop_clip_rect()
                     pygui.tree_pop()
                 pygui.pop_style_var()
+                pygui.pop_id()
 
     def draw_colour_editor(self):
         pygui.color_edit3("Success",   PingApp.colour_success)           # pygui.COLOR_EDIT_FLAGS_NO_INPUTS)

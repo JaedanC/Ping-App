@@ -1,3 +1,4 @@
+import os
 import pygui
 import glfw
 import OpenGL.GL as gl
@@ -47,6 +48,11 @@ def main():
         print("Failed to create window! Terminating")
         glfw.terminate()
         return
+
+    if os.path.isfile("icons8-signal-96.ico"):
+        from PIL import Image
+        image = Image.open("icons8-signal-96.ico")
+        glfw.set_window_icon(window, 1, image)
 
     glfw.make_context_current(window)
 

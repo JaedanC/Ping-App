@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import List, Dict
 import datetime
 import ipaddress
+import math
 import os
 import time
 
@@ -37,8 +38,9 @@ class PyguiPing(Ping):
         self._previous_frame_scroll = 0
         self._show_stats = pygui.Bool(False)
 
-    def draw(self):
-        if pygui.get_frame_count() % 60 == 0 and self._do_tick:
+    def draw(self, should_ping: bool):
+        # if pygui.get_frame_count() % 60 == 0 and self._do_tick and should_ping:
+        if self._do_tick and should_ping:
             self.tick()
 
         if not self._show_ping_window:
@@ -284,6 +286,9 @@ class PingApp:
         self.rolling_buffer_changed_timer = 120
         self.use_rolling_buffer = pygui.Bool(False)
         self.rolling_buffer_seconds = pygui.Int(600)
+        self.ping_interval_seconds = pygui.Int(2) # Clamps to [1, 10]
+        self.ping_interval_frames_to_wait = 0
+        self.battery_saving_mode = pygui.Bool(False)
 
     def refresh_ip_folder(self):
         if not os.path.exists("ips"):
@@ -430,6 +435,29 @@ class PingApp:
             pygui.same_line()
             help_marker("May improve performance for longer sessions. Consider " + \
                         "enabling logging if you need a lot of data")
+            pygui.same_line()
+            pygui.text_disabled("{}/{}".format(int(time.time() - self.current_time), self.rolling_buffer_seconds.value))
+
+            pygui.push_item_width(100)
+            pygui.input_int("Ping interval", self.ping_interval_seconds)
+            pygui.pop_item_width()
+            self.ping_interval_seconds.value = clamp(self.ping_interval_seconds.value, 1, 10)
+            pygui.same_line()
+            cx, cy = pygui.get_cursor_screen_pos()
+            dl = pygui.get_window_draw_list()
+            dl.path_arc_to(
+                (cx + 10, cy + pygui.get_text_line_height_with_spacing()/2),
+                pygui.get_text_line_height() / 2,
+                0,
+                math.radians((1 - (self.ping_interval_frames_to_wait / (self.ping_interval_seconds.value * 60))) * -360)
+            )
+            dl.path_stroke(
+                pygui.Vec4(0.5, 0.5, 0.5, 1).to_u32(),
+                0,
+                2
+            )
+            pygui.dummy((pygui.get_text_line_height(), pygui.get_text_line_height()))
+            pygui.checkbox("Battery Saving Mode", self.battery_saving_mode)
             pygui.tree_pop()
 
         if self.use_logging and pygui.get_frame_count() % 60 - 30 == 0:
@@ -517,6 +545,17 @@ class PingApp:
 
         latest_reply = time.time()
 
+        # Ping interval calculation
+        should_ping = False
+        self.ping_interval_frames_to_wait -= 1
+        if self.ping_interval_frames_to_wait <= 0:
+            self.ping_interval_frames_to_wait = self.ping_interval_seconds.value * 60
+            should_ping = True
+
+        # Battery saving mode
+        if self.battery_saving_mode:
+            time.sleep((3 / 60)) # Sleep for 3 frames
+
         for file_contents in self.loaded_contents:
             graphing_height = pygui.get_frame_height()
             normal_item_padding = pygui.get_style().item_inner_spacing
@@ -543,7 +582,7 @@ class PingApp:
                 # Do this outside of the drawing loop to ensure that the tick still
                 # occurs regardless of visibility
                 for i, ping in enumerate(group.get_pings()):
-                    ping.draw()
+                    ping.draw(should_ping)
 
                 pygui.push_style_var(pygui.STYLE_VAR_INDENT_SPACING, 24)
 

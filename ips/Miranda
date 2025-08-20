@@ -55,6 +55,12 @@ monitoring.hammond.com.au
 10.130.124.244
 10.130.124.243
 
+# Server
+10.130.129.213
+mir-hyperv01
+10.130.129.212
+mir-hyperv02
 
-# DNS
-google.com
+# RTM
+10.130.210.1
+mirandartm01

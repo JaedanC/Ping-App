@@ -1,3 +1,4 @@
 glfw
 Pillow
+ping3
 PyOpenGL

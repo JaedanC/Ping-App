@@ -82,6 +82,7 @@ class Ping:
         self._is_running = False
         self._thread_done = False
         # For linting
+        self._source_address = ""
         self._t = None
         self._i = 0
 
@@ -115,7 +116,11 @@ class Ping:
         start_time = time.time()
         error = None
         try:
-            response_time = ping3.ping(self._destination, unit="ms") # in milliseconds
+            response_time = ping3.ping(
+                self._destination,
+                src_addr=self._source_address,
+                unit="ms"
+            )
             reply_type = Ping.ReplyType.Success
         except ping3.errors.TimeToLiveExpired as e:
             error = e
@@ -194,7 +199,7 @@ class Ping:
 
         self._thread_done = True
 
-    def tick(self):
+    def tick(self, source_address: str = ""):
         if self._thread_done:
             assert self._t is not None
             self._is_running = False
@@ -205,6 +210,7 @@ class Ping:
             return
 
         self._is_running = True
+        self._source_address = source_address
         self._t = threading.Thread(target=self._thread_ping)
         self._t.start()
 

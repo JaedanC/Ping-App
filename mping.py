@@ -38,10 +38,10 @@ class PyguiPing(Ping):
         self._previous_frame_scroll = 0
         self._show_stats = pygui.Bool(False)
 
-    def draw(self, should_ping: bool):
+    def draw(self, should_ping: bool, source_address_for_ping: str):
         # if pygui.get_frame_count() % 60 == 0 and self._do_tick and should_ping:
         if self._do_tick and should_ping:
-            self.tick()
+            self.tick(source_address_for_ping)
 
         if not self._show_ping_window:
             return
@@ -291,6 +291,7 @@ class PingApp:
         self.ping_interval_frames_to_wait = 0
         self.battery_saving_mode = pygui.Bool(False)
         self.extend_ping_by_x_pixels = pygui.Int(1)
+        self.source_address_for_pings = pygui.String("")
 
     def refresh_ip_folder(self):
         if not os.path.exists("ips"):
@@ -468,6 +469,11 @@ class PingApp:
             help_marker("Adds a time.sleep() to the main loop to decrease FPS. " + \
                         "Can reduce the app's CPU usage by up to 90%. But by " + \
                         "roughly 50% if lots of pings are running")
+            pygui.push_item_width(120)
+            pygui.input_text("Ping source address", self.source_address_for_pings)
+            pygui.pop_item_width()
+            pygui.same_line()
+            help_marker("The source IP for the ping. Can usually be left blank")
             pygui.tree_pop()
 
         if self.use_logging and pygui.get_frame_count() % 60 - 30 == 0:
@@ -592,7 +598,7 @@ class PingApp:
                 # Do this outside of the drawing loop to ensure that the tick still
                 # occurs regardless of visibility
                 for i, ping in enumerate(group.get_pings()):
-                    ping.draw(should_ping)
+                    ping.draw(should_ping, self.source_address_for_pings.value)
 
                 pygui.push_style_var(pygui.STYLE_VAR_INDENT_SPACING, 24)
 

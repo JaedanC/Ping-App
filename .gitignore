@@ -3,6 +3,10 @@ __pycache__
 venv
 dist
 
+ips/*
+!ips/Default
+!ips/README.md
+
 pygui
 imgui.ini
 

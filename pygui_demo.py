@@ -1278,7 +1278,7 @@ class widget:
     tab_tab_bar_flags = pygui.Int(
         pygui.TAB_BAR_FLAGS_AUTO_SELECT_NEW_TABS | \
         pygui.TAB_BAR_FLAGS_REORDERABLE | \
-        pygui.TAB_BAR_FLAGS_FITTING_POLICY_RESIZE_DOWN)
+        pygui.TAB_BAR_FLAGS_FITTING_POLICY_SCROLL)
     plotting_animate = pygui.Bool(True)
     plotting_arr = [
         0.6, 0.1, 1.0, 0.5, 0.92, 0.1, 0.2
@@ -1292,6 +1292,7 @@ class widget:
     plotting_progress = 0
     plotting_progress_dir = 1
     colour_color = pygui.Vec4(114 / 255, 144 / 255, 154 / 255, 200 / 255)
+    colour_base_flags = pygui.Int(pygui.COLOR_EDIT_FLAGS_NONE)
     colour_alpha_preview = pygui.Bool(True)
     colour_alpha_half_preview = pygui.Bool(False)
     colour_drag_and_drop = pygui.Bool(True)
@@ -2387,14 +2388,19 @@ def show_demo_widgets():
             pygui.checkbox_flags("ImGuiTabBarFlags_AutoSelectNewTabs", widget.tab_tab_bar_flags, pygui.TAB_BAR_FLAGS_AUTO_SELECT_NEW_TABS)
             pygui.checkbox_flags("ImGuiTabBarFlags_TabListPopupButton", widget.tab_tab_bar_flags, pygui.TAB_BAR_FLAGS_TAB_LIST_POPUP_BUTTON)
             pygui.checkbox_flags("ImGuiTabBarFlags_NoCloseWithMiddleMouseButton", widget.tab_tab_bar_flags, pygui.TAB_BAR_FLAGS_NO_CLOSE_WITH_MIDDLE_MOUSE_BUTTON)
+            pygui.checkbox_flags("ImGuiTabBarFlags_DrawSelectedOverline", widget.tab_tab_bar_flags, pygui.TAB_BAR_FLAGS_DRAW_SELECTED_OVERLINE)
             if widget.tab_tab_bar_flags.value & pygui.TAB_BAR_FLAGS_FITTING_POLICY_MASK == 0:
                 widget.tab_tab_bar_flags.value |= pygui.TAB_BAR_FLAGS_FITTING_POLICY_DEFAULT
-            if pygui.checkbox_flags("ImGuiTabBarFlags_FittingPolicyResizeDown", widget.tab_tab_bar_flags, pygui.TAB_BAR_FLAGS_FITTING_POLICY_RESIZE_DOWN):
-                widget.tab_tab_bar_flags.value &= ~(pygui.TAB_BAR_FLAGS_FITTING_POLICY_MASK ^ pygui.TAB_BAR_FLAGS_FITTING_POLICY_RESIZE_DOWN)
+            if pygui.checkbox_flags("ImGuiTabBarFlags_FittingPolicyMixed", widget.tab_tab_bar_flags, pygui.TAB_BAR_FLAGS_FITTING_POLICY_MIXED):
+                widget.tab_tab_bar_flags.value &= ~(pygui.TAB_BAR_FLAGS_FITTING_POLICY_MASK ^ pygui.TAB_BAR_FLAGS_FITTING_POLICY_MIXED)
+            if pygui.checkbox_flags("ImGuiTabBarFlags_FittingPolicyShrink", widget.tab_tab_bar_flags, pygui.TAB_BAR_FLAGS_FITTING_POLICY_SHRINK):
+                widget.tab_tab_bar_flags.value &= ~(pygui.TAB_BAR_FLAGS_FITTING_POLICY_MASK ^ pygui.TAB_BAR_FLAGS_FITTING_POLICY_SHRINK)
             if pygui.checkbox_flags("ImGuiTabBarFlags_FittingPolicyScroll", widget.tab_tab_bar_flags, pygui.TAB_BAR_FLAGS_FITTING_POLICY_SCROLL):
                 widget.tab_tab_bar_flags.value &= ~(pygui.TAB_BAR_FLAGS_FITTING_POLICY_MASK ^ pygui.TAB_BAR_FLAGS_FITTING_POLICY_SCROLL)
 
             # Tab Bar
+            pygui.align_text_to_frame_padding()
+            pygui.text("Opened:")
             names = ["Artichoke", "Beetroot", "Celery", "Daikon"]
             for n, tab in enumerate(widget.tab_opened):
                 if n > 0:
@@ -2428,8 +2434,12 @@ def show_demo_widgets():
 
             # Expose some other flags which are useful to showcase how they interact with Leading/Trailing tabs
             pygui.checkbox_flags("ImGuiTabBarFlags_TabListPopupButton", widget.tab_tab_bar_flags, pygui.TAB_BAR_FLAGS_TAB_LIST_POPUP_BUTTON)
-            if pygui.checkbox_flags("ImGuiTabBarFlags_FittingPolicyResizeDown", widget.tab_tab_bar_flags, pygui.TAB_BAR_FLAGS_FITTING_POLICY_RESIZE_DOWN):
-                widget.tab_tab_bar_flags.value &= ~(pygui.TAB_BAR_FLAGS_FITTING_POLICY_MASK ^ pygui.TAB_BAR_FLAGS_FITTING_POLICY_RESIZE_DOWN)
+            if widget.tab_tab_bar_flags.value & pygui.TAB_BAR_FLAGS_FITTING_POLICY_MASK == 0:
+                widget.tab_tab_bar_flags.value |= pygui.TAB_BAR_FLAGS_FITTING_POLICY_DEFAULT
+            if pygui.checkbox_flags("ImGuiTabBarFlags_FittingPolicyMixed", widget.tab_tab_bar_flags, pygui.TAB_BAR_FLAGS_FITTING_POLICY_MIXED):
+                widget.tab_tab_bar_flags.value &= ~(pygui.TAB_BAR_FLAGS_FITTING_POLICY_MASK ^ pygui.TAB_BAR_FLAGS_FITTING_POLICY_MIXED)
+            if pygui.checkbox_flags("ImGuiTabBarFlags_FittingPolicyShrink", widget.tab_tab_bar_flags, pygui.TAB_BAR_FLAGS_FITTING_POLICY_SHRINK):
+                widget.tab_tab_bar_flags.value &= ~(pygui.TAB_BAR_FLAGS_FITTING_POLICY_MASK ^ pygui.TAB_BAR_FLAGS_FITTING_POLICY_SHRINK)
             if pygui.checkbox_flags("ImGuiTabBarFlags_FittingPolicyScroll", widget.tab_tab_bar_flags, pygui.TAB_BAR_FLAGS_FITTING_POLICY_SCROLL):
                 widget.tab_tab_bar_flags.value &= ~(pygui.TAB_BAR_FLAGS_FITTING_POLICY_MASK ^ pygui.TAB_BAR_FLAGS_FITTING_POLICY_SCROLL)
 
@@ -2545,21 +2555,19 @@ def show_demo_widgets():
 
     if pygui.tree_node("Color/Picker Widgets"):
         pygui.separator_text("Options")
-        pygui.checkbox("With Alpha Preview", widget.colour_alpha_preview)
-        pygui.checkbox("With Half Alpha Preview", widget.colour_alpha_half_preview)
-        pygui.checkbox("With Drag and Drop", widget.colour_drag_and_drop)
-        pygui.checkbox("With Options Menu", widget.colour_options_menu)
+
+        pygui.separator_text("Options")
+        pygui.checkbox_flags("ImGuiColorEditFlags_NoAlpha", widget.colour_base_flags, pygui.COLOR_EDIT_FLAGS_NO_ALPHA)
+        pygui.checkbox_flags("ImGuiColorEditFlags_AlphaOpaque", widget.colour_base_flags, pygui.COLOR_EDIT_FLAGS_ALPHA_OPAQUE)
+        pygui.checkbox_flags("ImGuiColorEditFlags_AlphaNoBg", widget.colour_base_flags, pygui.COLOR_EDIT_FLAGS_ALPHA_NO_BG)
+        pygui.checkbox_flags("ImGuiColorEditFlags_AlphaPreviewHalf", widget.colour_base_flags, pygui.COLOR_EDIT_FLAGS_ALPHA_PREVIEW_HALF)
+        pygui.checkbox_flags("ImGuiColorEditFlags_NoDragDrop", widget.colour_base_flags, pygui.COLOR_EDIT_FLAGS_NO_DRAG_DROP)
+        pygui.checkbox_flags("ImGuiColorEditFlags_NoOptions", widget.colour_base_flags, pygui.COLOR_EDIT_FLAGS_NO_OPTIONS)
         pygui.same_line()
         help_marker("Right-click on the individual color widget to show options.")
-        pygui.checkbox("With HDR", widget.colour_hdr)
+        pygui.checkbox_flags("ImGuiColorEditFlags_HDR", widget.colour_base_flags, pygui.COLOR_EDIT_FLAGS_HDR)
         pygui.same_line()
         help_marker("Currently all this does is to lift the 0..1 limits on dragging widgets.")
-        misc_flags = \
-            (pygui.COLOR_EDIT_FLAGS_HDR if widget.colour_hdr else 0) | \
-            (0 if widget.colour_drag_and_drop else pygui.COLOR_EDIT_FLAGS_NO_DRAG_DROP) | \
-            (pygui.COLOR_EDIT_FLAGS_ALPHA_PREVIEW_HALF if widget.colour_alpha_half_preview else \
-                (pygui.COLOR_EDIT_FLAGS_ALPHA_PREVIEW if widget.colour_alpha_preview else 0)) | \
-            (0 if widget.colour_options_menu else pygui.COLOR_EDIT_FLAGS_NO_OPTIONS)
 
         pygui.separator_text("Inline color editor")
         pygui.text("Color widget:")
@@ -2567,13 +2575,13 @@ def show_demo_widgets():
         help_marker(
             "Click on the color square to open a color picker.\n"
             "CTRL+click on individual component to input value.\n")
-        pygui.color_edit3("MyColor##1", widget.colour_color, misc_flags)
+        pygui.color_edit3("MyColor##1", widget.colour_color, widget.colour_base_flags.value)
 
         pygui.text("Color widget HSV with Alpha:")
-        pygui.color_edit4("MyColor##2", widget.colour_color, pygui.COLOR_EDIT_FLAGS_DISPLAY_HSV | misc_flags)
+        pygui.color_edit4("MyColor##2", widget.colour_color, pygui.COLOR_EDIT_FLAGS_DISPLAY_HSV | widget.colour_base_flags.value)
 
         pygui.text("Color widget with Float Display:")
-        pygui.color_edit4("MyColor##2f", widget.colour_color, pygui.COLOR_EDIT_FLAGS_FLOAT | misc_flags)
+        pygui.color_edit4("MyColor##2f", widget.colour_color, pygui.COLOR_EDIT_FLAGS_FLOAT | widget.colour_base_flags.value)
 
         pygui.text("Color button with Picker:")
         pygui.same_line()
@@ -2581,7 +2589,7 @@ def show_demo_widgets():
             "With the ImGuiColorEditFlags_NoInputs flag you can hide all the slider/text inputs.\n"
             "With the ImGuiColorEditFlags_NoLabel flag you can pass a non-empty label which will only "
             "be used for the tooltip and picker popup.")
-        pygui.color_edit4("MyColor##3", widget.colour_color, pygui.COLOR_EDIT_FLAGS_NO_INPUTS | pygui.COLOR_EDIT_FLAGS_NO_LABEL | misc_flags)
+        pygui.color_edit4("MyColor##3", widget.colour_color, pygui.COLOR_EDIT_FLAGS_NO_INPUTS | pygui.COLOR_EDIT_FLAGS_NO_LABEL | widget.colour_base_flags.value)
 
         pygui.text("Color button with Custom Picker Popup:")
 
@@ -2596,7 +2604,7 @@ def show_demo_widgets():
                 widget.colour_saved_palette[n].w = 1 # Alpha
             widget.colour_saved_palette_init.value = False
 
-        open_popup = pygui.color_button("MyColor##3b", widget.colour_color.tuple(), misc_flags)
+        open_popup = pygui.color_button("MyColor##3b", widget.colour_color.tuple(), widget.colour_base_flags.value)
         pygui.same_line(0, pygui.get_style().item_inner_spacing[0])
         open_popup = open_popup or pygui.button("Palette")
         if open_popup:
@@ -2605,7 +2613,7 @@ def show_demo_widgets():
         if pygui.begin_popup("mypicker"):
             pygui.text("MY CUSTOM COLOR PICKER WITH AN AMAZING PALETTE!")
             pygui.separator()
-            pygui.color_picker4("##picker", widget.colour_color, misc_flags | pygui.COLOR_EDIT_FLAGS_NO_SIDE_PREVIEW | pygui.COLOR_EDIT_FLAGS_NO_SMALL_PREVIEW)
+            pygui.color_picker4("##picker", widget.colour_color, widget.colour_base_flags.value | pygui.COLOR_EDIT_FLAGS_NO_SIDE_PREVIEW | pygui.COLOR_EDIT_FLAGS_NO_SMALL_PREVIEW)
             pygui.same_line()
 
             pygui.begin_group()
@@ -2660,7 +2668,7 @@ def show_demo_widgets():
         pygui.color_button(
             "MyColor##3c",
             widget.colour_color.tuple(),
-            misc_flags | (pygui.COLOR_EDIT_FLAGS_NO_BORDER if widget.colour_no_border else 0),
+            widget.colour_base_flags.value | (pygui.COLOR_EDIT_FLAGS_NO_BORDER if widget.colour_no_border else 0),
             (80, 80))
 
         pygui.separator_text("Color picker")
@@ -2672,7 +2680,7 @@ def show_demo_widgets():
             pygui.checkbox("With Ref Color", widget.colour_ref_color)
             if widget.colour_ref_color:
                 pygui.same_line()
-                pygui.color_edit4("##RefColor", widget.colour_ref_color_v, pygui.COLOR_EDIT_FLAGS_NO_INPUTS | misc_flags)
+                pygui.color_edit4("##RefColor", widget.colour_ref_color_v, pygui.COLOR_EDIT_FLAGS_NO_INPUTS | widget.colour_base_flags.value)
         pygui.combo("Display Mode", widget.colour_display_mode, ["Auto/Current", "None", "RGB Only", "HSV Only", "Hex Only"])
         pygui.same_line()
         help_marker(
@@ -2681,7 +2689,7 @@ def show_demo_widgets():
             "if you don't specify a display mode.\n\nYou can change the defaults using SetColorEditOptions().")
         pygui.same_line()
         help_marker("When not specified explicitly (Auto/Current mode), user can right-click the picker to change mode.")
-        flags = misc_flags
+        flags = widget.colour_base_flags.value
         if not widget.colour_alpha: # This is by default if you call ColorPicker3() instead of ColorPicker4()
             flags |= pygui.COLOR_EDIT_FLAGS_NO_ALPHA
         if widget.colour_alpha_bar:
@@ -3960,8 +3968,6 @@ def show_random_extras():
             pygui.menu_item("io.backend_flags:                          {}".format(io.backend_flags))
             pygui.menu_item("io.backend_platform_name:                  {}".format(io.backend_platform_name))
             pygui.menu_item("io.backend_renderer_name:                  {}".format(io.backend_renderer_name))
-            pygui.menu_item("io.backend_using_legacy_key_arrays:        {}".format(io.backend_using_legacy_key_arrays))
-            pygui.menu_item("io.backend_using_legacy_nav_input_array:   {}".format(io.backend_using_legacy_nav_input_array))
             pygui.menu_item("io.config_debug_begin_return_value_loop:   {}".format(io.config_debug_begin_return_value_loop))
             pygui.menu_item("io.config_debug_begin_return_value_once:   {}".format(io.config_debug_begin_return_value_once))
             pygui.menu_item("io.config_debug_highlight_id_conflicts:    {}".format(io.config_debug_highlight_id_conflicts))
@@ -5665,6 +5671,7 @@ class crash:
     catch_message = ""
     green_colour = pygui.Vec4(0, 1, 0, 0.4)
     red_colour = pygui.Vec4(1, 0, 0, 0.4)
+    begin_open = pygui.Bool(False)
 
 
 def show_crash_test():
@@ -5683,7 +5690,7 @@ def show_crash_test():
     else:
         pygui.text_colored((1, 0, 0, 1), "Custom Exceptions Off")
 
-    # TODO: I believe this specific crash test is not working since cimgui
+    # TODO: I believe this specific crash test is not working since dcimgui
     # wrapped IM_ASSERT with their own implementation. Can this be fixed? The
     # other errors are caught fine. Perhaps this error is unrecoverable and thus
     # cannot show the text to screen?
@@ -5799,11 +5806,51 @@ def show_crash_test():
             assert pygui.IM_ASSERT(False, "Haha, can't catch me")
         except pygui.get_imgui_error() as e:
             # Prefer to use pygui.ImGuiError as it is safer. This value could
-            # be None if cimgui is not using a custom python exception. For this
+            # be None if dcimgui is not using a custom python exception. For this
             # example this is exactly what we want.
             crash.catch_message = "Caught! You have custom exceptions on."
             crash.error_text.value = str(e)
 
+    pygui.separator()
+
+    io = pygui.get_io()
+    config_error_recovery = pygui.Bool(io.config_error_recovery)
+    config_error_recovery_enable_assert = pygui.Bool(io.config_error_recovery_enable_assert)
+    config_error_recovery_enable_debug_log = pygui.Bool(io.config_error_recovery_enable_debug_log)
+    config_error_recovery_enable_tooltip = pygui.Bool(io.config_error_recovery_enable_tooltip)
+    pygui.checkbox("io.config_error_recovery", config_error_recovery)
+    pygui.checkbox("io.config_error_recovery_enable_assert (Disable to catch)", config_error_recovery_enable_assert)
+    pygui.checkbox("io.config_error_recovery_enable_debug_log", config_error_recovery_enable_debug_log)
+    pygui.checkbox("io.config_error_recovery_enable_tooltip", config_error_recovery_enable_tooltip)
+    io.config_error_recovery = config_error_recovery.value
+    io.config_error_recovery_enable_assert = config_error_recovery_enable_assert.value
+    io.config_error_recovery_enable_debug_log = config_error_recovery_enable_debug_log.value
+    io.config_error_recovery_enable_tooltip = config_error_recovery_enable_tooltip.value
+
+    if not config_error_recovery_enable_assert:
+        pygui.push_style_color(pygui.COL_TEXT, (0, 1, 0, 1))
+        pygui.text("Catch")
+    else:
+        pygui.push_style_color(pygui.COL_TEXT, (1, 0, 0, 1))
+        pygui.text("Throw")
+    pygui.pop_style_color()
+    pygui.same_line()
+    help_marker(
+        "This will call pygui.begin() without a corresponding end() call\n"
+        "If you want this error to be caught, then io.config_error_recovery_enable_assert\n"
+        "must be disabled. Note, if io.config_error_recovery is True then one of\n"
+        "error methods must be enabled.\n"
+        "\n"
+        "    pygui.begin(\"Begin with no end\")\n"
+        "\n"
+    )
+    pygui.same_line()
+    pygui.checkbox("Open window", crash.begin_open)
+    if crash.begin_open:
+        pygui.begin("Begin with no end")
+
+    pygui.same_line()
+    pygui.text("Crash 5: pygui.begin() without pygui.end()")
     if len(crash.catch_message) > 0:
         pygui.text(crash.catch_message)
         pygui.text_wrapped("Potential Error Message: " + crash.error_text.value)
@@ -6375,105 +6422,107 @@ def demo_fonts_init():
     This function must be called before render if you want to test different
     fonts.
     """
-    io = pygui.get_io()
+    return
+    # io = pygui.get_io()
 
-    io.fonts.add_font_default()
+    # io.fonts.add_font_default()
 
-    # utf-8 ranges from above
-    builder = pygui.ImFontGlyphRangesBuilder.create()
-    builder.add_text(font.utf8_test)
-    ranges = builder.build_ranges()
-    builder.destroy()
+    # # utf-8 ranges from above
+    # builder = pygui.ImFontGlyphRangesBuilder.create()
+    # builder.add_text(font.utf8_test)
+    # ranges = builder.build_ranges()
+    # builder.destroy()
 
-    # CascadiaMono font
-    config = pygui.ImFontConfig.create()
-    config.name = "CascadiaMono-SemiBold.otf without range"
-    io.fonts.add_font_from_file_ttf("pygui/fonts/CascadiaMono-SemiBold.otf", 14, config)
-    config.name = "CascadiaMono-SemiBold.otf with range"
-    io.fonts.add_font_from_file_ttf("pygui/fonts/CascadiaMono-SemiBold.otf", 14, config, ranges)
-    config.destroy()
+    # # CascadiaMono font
+    # config = pygui.ImFontConfig.create()
+    # config.name = "CascadiaMono-SemiBold.otf without range"
+    # io.fonts.add_font_from_file_ttf("pygui/fonts/CascadiaMono-SemiBold.otf", 14, config)
+    # config.name = "CascadiaMono-SemiBold.otf with range"
+    # io.fonts.add_font_from_file_ttf("pygui/fonts/CascadiaMono-SemiBold.otf", 14, config, ranges)
+    # config.destroy()
 
-    # NotoSansMath font
-    config = pygui.ImFontConfig.create()
-    config.name = "NotoSansMath-Regular.ttf without range"
-    io.fonts.add_font_from_file_ttf("pygui/fonts/NotoSansMath-Regular.ttf", 20, config)
-    config.name = "NotoSansMath-Regular.ttf with range"
-    io.fonts.add_font_from_file_ttf("pygui/fonts/NotoSansMath-Regular.ttf", 20, config, ranges)
-    config.destroy()
+    # # NotoSansMath font
+    # config = pygui.ImFontConfig.create()
+    # config.name = "NotoSansMath-Regular.ttf without range"
+    # io.fonts.add_font_from_file_ttf("pygui/fonts/NotoSansMath-Regular.ttf", 20, config)
+    # config.name = "NotoSansMath-Regular.ttf with range"
+    # io.fonts.add_font_from_file_ttf("pygui/fonts/NotoSansMath-Regular.ttf", 20, config, ranges)
+    # config.destroy()
 
-    # Selawk font
-    config = pygui.ImFontConfig.create()
-    config.name = "selawk.ttf without range"
-    config.glyph_min_advance_x = 7.15
-    config.glyph_max_advance_x = 7.15
-    io.fonts.add_font_from_file_ttf("pygui/fonts/selawk.ttf", 15, config)
-    config.name = "selawk.ttf with range"
-    io.fonts.add_font_from_file_ttf("pygui/fonts/selawk.ttf", 15, config, ranges)
-    config.destroy()
+    # # Selawk font
+    # config = pygui.ImFontConfig.create()
+    # config.name = "selawk.ttf without range"
+    # config.glyph_min_advance_x = 7.15
+    # config.glyph_max_advance_x = 7.15
+    # io.fonts.add_font_from_file_ttf("pygui/fonts/selawk.ttf", 15, config)
+    # config.name = "selawk.ttf with range"
+    # io.fonts.add_font_from_file_ttf("pygui/fonts/selawk.ttf", 15, config, ranges)
+    # config.destroy()
 
-    # Merging multiple fonts together
-    config = pygui.ImFontConfig.create()
-    config.name = "CascadiaMono + Selawk + NotoSansMath"
-    config.glyph_min_advance_x = 7.15
-    config.glyph_max_advance_x = 7.15
-    io.fonts.add_font_from_file_ttf("pygui/fonts/CascadiaMono-SemiBold.otf", 14, config, ranges)
-    config.merge_mode = True
-    io.fonts.add_font_from_file_ttf("pygui/fonts/NotoSansMath-Regular.ttf", 20, config, ranges)
-    io.fonts.add_font_from_file_ttf("pygui/fonts/selawk.ttf", 15, config, ranges)
-    config.destroy()
+    # # Merging multiple fonts together
+    # config = pygui.ImFontConfig.create()
+    # config.name = "CascadiaMono + Selawk + NotoSansMath"
+    # config.glyph_min_advance_x = 7.15
+    # config.glyph_max_advance_x = 7.15
+    # io.fonts.add_font_from_file_ttf("pygui/fonts/CascadiaMono-SemiBold.otf", 14, config, ranges)
+    # config.merge_mode = True
+    # io.fonts.add_font_from_file_ttf("pygui/fonts/NotoSansMath-Regular.ttf", 20, config, ranges)
+    # io.fonts.add_font_from_file_ttf("pygui/fonts/selawk.ttf", 15, config, ranges)
+    # config.destroy()
 
-    # Showing the font glyph builder.
-    builder = pygui.ImFontGlyphRangesBuilder.create()
-    builder.add_text("Should not be visible")
-    builder.clear()
-    omega = ord("Ω")
-    builder.add_text("asciiASCII")
-    assert not builder.get_bit(omega)
-    builder.set_bit(omega)
-    assert builder.get_bit(omega)
-    builder.add_char(ord("b"))
-    custom_range = builder.build_ranges()
-    builder.destroy()
+    # # Showing the font glyph builder.
+    # builder = pygui.ImFontGlyphRangesBuilder.create()
+    # builder.add_text("Should not be visible")
+    # builder.clear()
+    # omega = ord("Ω")
+    # builder.add_text("asciiASCII")
+    # assert not builder.get_bit(omega)
+    # builder.set_bit(omega)
+    # assert builder.get_bit(omega)
+    # builder.add_char(ord("b"))
+    # custom_range = builder.build_ranges()
+    # builder.destroy()
 
-    config = pygui.ImFontConfig.create()
-    config.name = "Proggy + Droid Minimal"
-    io.fonts.add_font_from_file_ttf("pygui/fonts/ProggyClean.ttf", 20, config, custom_range)
-    config.merge_mode = True
-    io.fonts.add_font_from_file_ttf("pygui/fonts/DroidSans.ttf", 11, config, ranges)
-    config.destroy()
+    # config = pygui.ImFontConfig.create()
+    # config.name = "Proggy + Droid Minimal"
+    # io.fonts.add_font_from_file_ttf("pygui/fonts/ProggyClean.ttf", 20, config, custom_range)
+    # config.merge_mode = True
+    # io.fonts.add_font_from_file_ttf("pygui/fonts/DroidSans.ttf", 11, config, ranges)
+    # config.destroy()
 
-    # More fonts
-    io.fonts.add_font_from_file_ttf("pygui/fonts/unifont-15.0.01.otf", 13, None, ranges)
+    # # More fonts
+    # io.fonts.add_font_from_file_ttf("pygui/fonts/unifont-15.0.01.otf", 13, None, ranges)
 
-    # Any fonts that need to be added should call build()
-    io.fonts.build()
+    # # Any fonts that need to be added should call build()
+    # io.fonts.build()
 
-    # Since we need the ranges to be valid for the call to build, Python's gc
-    # might clean up the ImGlyphRange before the call to build, resulting in
-    # accessing freed memory. This is why we defer the destruction explicitly to
-    # ensure the memory still availble for the build above. Aat that point. The
-    # gc can safetly clean up the python ImFontConfig instance whenever it
-    # needs.
-    custom_range.destroy()
-    ranges.destroy()
+    # # Since we need the ranges to be valid for the call to build, Python's gc
+    # # might clean up the ImGlyphRange before the call to build, resulting in
+    # # accessing freed memory. This is why we defer the destruction explicitly to
+    # # ensure the memory still availble for the build above. Aat that point. The
+    # # gc can safetly clean up the python ImFontConfig instance whenever it
+    # # needs.
+    # custom_range.destroy()
+    # ranges.destroy()
 
 
 def show_fonts_demo():
-    if pygui.begin("Custom fonts"):
-        fonts = pygui.get_io().fonts.fonts
-        selected_font = fonts[0]
-        if pygui.begin("Style Editor"):
-            pygui.checkbox("Push Font", font.use_font)
-            pygui.list_box("Use font", font.use_index, [f.get_debug_name() for f in fonts], len(fonts))
-            selected_font = fonts[font.use_index.value % len(fonts)]
-            if pygui.collapsing_header("Style Editor"):
-                pygui.show_style_editor()
-        pygui.end()
+    return
+    # if pygui.begin("Custom fonts"):
+    #     fonts = pygui.get_io().fonts.fonts
+    #     selected_font = fonts[0]
+    #     if pygui.begin("Style Editor"):
+    #         pygui.checkbox("Push Font", font.use_font)
+    #         pygui.list_box("Use font", font.use_index, [f.get_debug_name() for f in fonts], len(fonts))
+    #         selected_font = fonts[font.use_index.value % len(fonts)]
+    #         if pygui.collapsing_header("Style Editor"):
+    #             pygui.show_style_editor()
+    #     pygui.end()
 
-        pygui.push_font(selected_font if font.use_font else fonts[0])
-        pygui.text("After push こんにちは！テスト")
-        pygui.text("©땔땕땗😀☠️⭐")
-        pygui.text_unformatted(font.utf8_test)
-        pygui.show_about_window()
-        pygui.pop_font()
-    pygui.end()
+    #     pygui.push_font(selected_font if font.use_font else fonts[0])
+    #     pygui.text("After push こんにちは！テスト")
+    #     pygui.text("©땔땕땗😀☠️⭐")
+    #     pygui.text_unformatted(font.utf8_test)
+    #     pygui.show_about_window()
+    #     pygui.pop_font()
+    # pygui.end()

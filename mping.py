@@ -98,19 +98,19 @@ class PyguiPing(Ping):
 
                     if reply.reply_type is Ping.ReplyType.Success:
                         pygui.push_style_color(pygui.COL_TEXT, (0, 1, 0, 1))
-                    elif reply.reply_type is Ping.ReplyType.DestinationHostUnreachable:
+                    elif reply.reply_type is Ping.ReplyType.DestinationUnreachable:
                         pygui.push_style_color(pygui.COL_TEXT, (1, 1, 0, 1))
-                    elif reply.reply_type is Ping.ReplyType.RequestTimedOut:
-                        pygui.push_style_color(pygui.COL_TEXT, (1, 0, 0, 1))
+                    elif reply.reply_type is Ping.ReplyType.HostUnknown:
+                        pygui.push_style_color(pygui.COL_TEXT, (0, 0, 1, 1))
                     else:
-                        pygui.push_style_color(pygui.COL_TEXT, pygui.get_style_color_vec4(pygui.COL_TEXT))
+                        pygui.push_style_color(pygui.COL_TEXT, (1, 0, 0, 1))
 
                     start_time = datetime.datetime.fromtimestamp(int(reply.start_time))
                     start_time_str = start_time.strftime("%d/%m/%y @ %H:%M:%S%p")
 
                     pygui.text("[{}] {}".format(
                         start_time_str,
-                        reply.line
+                        reply.more_detail_text
                     ))
 
                     pygui.pop_style_color()
@@ -255,11 +255,12 @@ class IPFileContent:
 
 
 class PingApp:
-    colour_success =           pygui.Vec4(0, 1, 0, 1)
+    colour_success =           pygui.Vec4(0, 0.8, 0, 1)
+    colour_success_low_ping =  pygui.Vec4(0, 1, 0, 1)
     colour_success_high_ping = pygui.Vec4(1, 1, 1, 1)
     colour_timeout =           pygui.Vec4(1, 0, 0, 1)
-    colour_host_unreachable =  pygui.Vec4(1, 1, 0, 1)
-    colour_general_failure =   pygui.Vec4(0, 0, 1, 1)
+    colour_destination_unreachable =  pygui.Vec4(1, 1, 0, 1)
+    colour_host_unknown =   pygui.Vec4(0, 0, 1, 1)
 
     def __init__(self):
         self.current_time = time.time()
@@ -286,9 +287,10 @@ class PingApp:
         self.rolling_buffer_changed_timer = 120
         self.use_rolling_buffer = pygui.Bool(False)
         self.rolling_buffer_seconds = pygui.Int(600)
-        self.ping_interval_seconds = pygui.Int(2) # Clamps to [1, 10]
+        self.ping_interval_seconds = pygui.Int(1) # Clamps to [1, 10]
         self.ping_interval_frames_to_wait = 0
         self.battery_saving_mode = pygui.Bool(False)
+        self.extend_ping_by_x_pixels = pygui.Int(1)
 
     def refresh_ip_folder(self):
         if not os.path.exists("ips"):
@@ -414,6 +416,7 @@ class PingApp:
             pygui.push_item_width(100)
             pygui.input_int("Width Multiplier", self.width_multiplier)
             pygui.pop_item_width()
+            self.width_multiplier.value = clamp(self.width_multiplier.value, 1, math.inf)
 
             if pygui.checkbox("Enable Logging", self.use_logging):
                 self.use_logging_clicked_time = time.time()
@@ -457,7 +460,14 @@ class PingApp:
                 2
             )
             pygui.dummy((pygui.get_text_line_height(), pygui.get_text_line_height()))
+            pygui.push_item_width(100)
+            pygui.input_int("Extend ping by (px)", self.extend_ping_by_x_pixels)
+            pygui.pop_item_width()
             pygui.checkbox("Battery Saving Mode", self.battery_saving_mode)
+            pygui.same_line()
+            help_marker("Adds a time.sleep() to the main loop to decrease FPS. " + \
+                        "Can reduce the app's CPU usage by up to 90%. But by " + \
+                        "roughly 50% if lots of pings are running")
             pygui.tree_pop()
 
         if self.use_logging and pygui.get_frame_count() % 60 - 30 == 0:
@@ -648,14 +658,14 @@ class PingApp:
                             if reply.reply_type is Ping.ReplyType.Success:
                                 if reply.response_time > 100: # 100ms
                                     colour = PingApp.colour_success_high_ping.to_u32()
-                                else:
+                                elif reply.response_time > 20: # 100ms
                                     colour = PingApp.colour_success.to_u32()
-                            elif reply.reply_type is Ping.ReplyType.DestinationHostUnreachable:
-                                colour = PingApp.colour_host_unreachable.to_u32()
-                            elif reply.reply_type is Ping.ReplyType.DestinationNetUnreachable:
-                                colour = PingApp.colour_host_unreachable.to_u32()
-                            elif reply.reply_type is Ping.ReplyType.GeneralFailure:
-                                colour = PingApp.colour_general_failure.to_u32()
+                                else:
+                                    colour = PingApp.colour_success_low_ping.to_u32()
+                            elif reply.reply_type is Ping.ReplyType.DestinationUnreachable:
+                                colour = PingApp.colour_destination_unreachable.to_u32()
+                            elif reply.reply_type is Ping.ReplyType.HostUnknown:
+                                colour = PingApp.colour_host_unknown.to_u32()
                             else:
                                 colour = PingApp.colour_timeout.to_u32()
 
@@ -673,7 +683,7 @@ class PingApp:
                             draw_list.add_rect_filled(
                                 pygui.get_item_rect_min(),
                                 (
-                                    item_max[0] + self.width_multiplier.value // 2,
+                                    item_max[0] + self.extend_ping_by_x_pixels.value,
                                     item_max[1] + 3
                                 ),
                                 colour,
@@ -685,14 +695,15 @@ class PingApp:
                                 start_time = datetime.datetime.fromtimestamp(int(reply.start_time))
                                 pygui.text(start_time.strftime("%a %d/%m/%Y @ %H:%M:%S%p"))
                                 pygui.push_style_color(pygui.COL_TEXT, colour)
-                                pygui.text(f"[{i}] {reply.line}")
+                                pygui.text(f"[{i}] {reply.more_detail_text}")
                                 pygui.pop_style_color()
                                 pygui.end_tooltip()
                             pygui.pop_style_var(2)
 
                         # Makes each line the correct length based on time
                         pygui.same_line()
-                        pygui.dummy(((latest_reply - last_draw_time) * self.width_multiplier.value, 2))
+                        GO_AHEAD_BY_SECONDS = 1
+                        pygui.dummy(((latest_reply - last_draw_time + GO_AHEAD_BY_SECONDS) * self.width_multiplier.value, 2))
                         draw_list.add_rect_filled(
                             pygui.get_item_rect_min(),
                             pygui.get_item_rect_max(),

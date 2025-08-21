@@ -261,6 +261,7 @@ class PingApp:
     colour_timeout =           pygui.Vec4(1, 0, 0, 1)
     colour_destination_unreachable =  pygui.Vec4(1, 1, 0, 1)
     colour_host_unknown =   pygui.Vec4(0, 0, 1, 1)
+    IPS_DIRECTORY = "ips"
 
     def __init__(self):
         self.current_time = time.time()
@@ -294,10 +295,16 @@ class PingApp:
         self.source_address_for_pings = pygui.String("")
 
     def refresh_ip_folder(self):
-        if not os.path.exists("ips"):
-            os.makedirs("ips")
+        if not os.path.exists(PingApp.IPS_DIRECTORY):
+            os.makedirs(PingApp.IPS_DIRECTORY)
 
-        self.file_list = os.listdir("ips")
+        self.file_list = os.listdir(PingApp.IPS_DIRECTORY)
+
+        # Keep only the files that have the .txt extension
+        def ignore_readme(file_name_with_ext: str):
+            _, ext = os.path.splitext(file_name_with_ext)
+            return ext != ".md"
+        self.file_list = list(filter(ignore_readme, self.file_list))
 
         # Only keep the files that are in the list
         seen_files: Dict[str, pygui.Bool] = {}
@@ -313,7 +320,7 @@ class PingApp:
                 continue
 
             file_content = existing_file_content.get(file) or IPFileContent(file)
-            with open(f"ips/{file}", encoding="utf-8") as f:
+            with open(os.path.join(PingApp.IPS_DIRECTORY, file), encoding="utf-8") as f:
                 file_content.set_content(f.read())
 
             content_to_keep.append(file_content)
@@ -339,7 +346,14 @@ class PingApp:
                     self.is_currently_renaming = None
 
                 if pygui.input_text("###Renaming file", self.renaming_site, pygui.INPUT_TEXT_FLAGS_ENTER_RETURNS_TRUE):
-                    print("Rename", file, "to", self.renaming_site.value)
+                    try:
+                        os.rename(
+                            os.path.join(PingApp.IPS_DIRECTORY, file),
+                            os.path.join(PingApp.IPS_DIRECTORY, self.renaming_site.value)
+                        )
+                        self.refresh_ip_folder()
+                    except IOError as e:
+                        print(f"Failed to rename {file}: {e}")
                     self.is_currently_renaming = None
             else:
                 do_reload = pygui.selectable_bool_ptr(file, is_selected, pygui.SELECTABLE_FLAGS_ALLOW_OVERLAP) or do_reload
@@ -356,7 +370,7 @@ class PingApp:
             pygui.text("Are you sure you want to delete:")
             pygui.text("{}".format(self.is_currently_deleting))
             if pygui.button("Confirm"):
-                os.remove("ips/" + self.is_currently_deleting)
+                os.remove(os.path.join(PingApp.IPS_DIRECTORY, self.is_currently_deleting))
                 self.deleting_site_modal.value = False
                 self.refresh_ip_folder()
             pygui.same_line()
@@ -368,27 +382,30 @@ class PingApp:
             self.load_contents_from_selected_files()
 
     def draw_editor_window(self):
-        if len(self.loaded_contents) == 0:
-            return
+        if pygui.begin_tab_bar("###Editor tabs"):
+            for loaded_content in self.loaded_contents:
+                if pygui.begin_tab_item(loaded_content.get_filename()):
+                    contents_buf = loaded_content.get_content()
 
-        loaded = self.loaded_contents[0]
-        file = loaded.get_filename()
-        contents_buf = loaded.get_content()
+                    has_changed = pygui.input_text_multiline(
+                        "###Editor",
+                        contents_buf,
+                        pygui.get_content_region_avail(),
+                    )
+                    if has_changed:
+                        with open(os.path.join(PingApp.IPS_DIRECTORY, loaded_content.get_filename()), "w", encoding="utf-8") as f:
+                            f.write(contents_buf.value)
+                        loaded_content.content_changed()
 
-        has_changed = pygui.input_text_multiline(
-            "###Editor",
-            contents_buf,
-            pygui.get_content_region_avail(),
-        )
-
-        if has_changed:
-            with open(f"ips/{file}", "w", encoding="utf-8") as f:
-                f.write(contents_buf.value)
-            loaded.content_changed()
+                    pygui.end_tab_item()
+            pygui.end_tab_bar()
 
     def draw_add_site_area(self):
         if not self.is_currently_adding_site:
             self.is_currently_adding_site = pygui.button(" + ")
+            pygui.same_line()
+            if pygui.button("Open Folder"):
+                os.startfile(os.path.abspath(PingApp.IPS_DIRECTORY))
 
         if self.is_currently_adding_site:
             if pygui.is_key_pressed(pygui.KEY_ESCAPE):
@@ -400,8 +417,8 @@ class PingApp:
                 return
             self.is_currently_adding_site = False
 
-            if not os.path.exists("ips/" + self.adding_site.value):
-                with open("ips/" + self.adding_site.value, "w", encoding="utf-8") as f:
+            if not os.path.exists(os.path.join(PingApp.IPS_DIRECTORY, self.adding_site.value)):
+                with open(os.path.join(PingApp.IPS_DIRECTORY, self.adding_site.value), "w", encoding="utf-8") as f:
                     f.write("")
                 self.adding_site.value = ""
                 self.refresh_ip_folder()

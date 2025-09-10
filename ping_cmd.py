@@ -119,7 +119,8 @@ class Ping:
             response_time = ping3.ping(
                 self._destination,
                 src_addr=self._source_address,
-                unit="ms"
+                unit="ms",
+                # timeout=8,
             )
             reply_type = Ping.ReplyType.Success
         except ping3.errors.TimeToLiveExpired as e:

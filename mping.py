@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, Dict
+from typing import List, Dict, Optional
 import datetime
 import ipaddress
 import math
@@ -277,7 +277,7 @@ class PingApp:
         self.is_currently_adding_site = False
         self.adding_site = pygui.String()
         self.deleting_site_modal = pygui.Bool(False)
-        self.is_currently_deleting = None
+        self.file_currently_deleting: Optional[str] = None
         self.scroll_amount = pygui.Float(0)
         self.scroll_is_locked = pygui.Bool(True)
         self.scroll_max = pygui.Float(0)
@@ -360,7 +360,7 @@ class PingApp:
 
             pygui.same_line(pygui.get_content_region_avail()[0] - 15)
             if pygui.small_button("x###Delete button " + file):
-                self.is_currently_deleting = file
+                self.file_currently_deleting = file
                 self.deleting_site_modal.value = True
                 pygui.open_popup("Delete List")
 
@@ -368,9 +368,9 @@ class PingApp:
 
         if pygui.begin_popup_modal("Delete List", self.deleting_site_modal):
             pygui.text("Are you sure you want to delete:")
-            pygui.text("{}".format(self.is_currently_deleting))
+            pygui.text("{}".format(self.file_currently_deleting))
             if pygui.button("Confirm"):
-                os.remove(os.path.join(PingApp.IPS_DIRECTORY, self.is_currently_deleting))
+                os.remove(os.path.join(PingApp.IPS_DIRECTORY, self.file_currently_deleting))
                 self.deleting_site_modal.value = False
                 self.refresh_ip_folder()
             pygui.same_line()
@@ -667,15 +667,16 @@ class PingApp:
                             # pygui.CHILD_FLAGS_BORDER
                         )
 
-                        if i == 0:
-                            self.scroll_max = pygui.Float(max(
-                                self.scroll_max.value,
-                                pygui.get_scroll_max_x()
-                            ))
+                        # The maximum scroll is determined by the longest of all
+                        # pygui.begin_child windows.
+                        self.scroll_max = pygui.Float(max(
+                            self.scroll_max.value,
+                            pygui.get_scroll_max_x()
+                        ))
 
                         last_draw_time = self.current_time
-                        for i, reply in enumerate(ping):
-                            if i > 0:
+                        for j, reply in enumerate(ping):
+                            if j > 0:
                                 pygui.same_line()
 
                             if reply.reply_type is Ping.ReplyType.Success:
@@ -718,7 +719,7 @@ class PingApp:
                                 start_time = datetime.datetime.fromtimestamp(int(reply.start_time))
                                 pygui.text(start_time.strftime("%a %d/%m/%Y @ %H:%M:%S%p"))
                                 pygui.push_style_color(pygui.COL_TEXT, colour)
-                                pygui.text(f"[{i}] {reply.more_detail_text}")
+                                pygui.text(f"[{j}] {reply.more_detail_text}")
                                 pygui.pop_style_color()
                                 pygui.end_tooltip()
                             pygui.pop_style_var(2)

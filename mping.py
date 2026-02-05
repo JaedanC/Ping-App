@@ -288,7 +288,7 @@ class PingApp:
         self.rolling_buffer_changed_timer = 120
         self.use_rolling_buffer = pygui.Bool(False)
         self.rolling_buffer_seconds = pygui.Int(600)
-        self.ping_interval_seconds = pygui.Int(1) # Clamps to [1, 10]
+        self.ping_interval_seconds = pygui.Int(3) # Clamps to [1, 10]
         self.ping_interval_frames_to_wait = 0
         self.battery_saving_mode = pygui.Bool(False)
         self.extend_ping_by_x_pixels = pygui.Int(1)

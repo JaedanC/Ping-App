@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import List, Dict, Optional
+from itertools import zip_longest
+from typing import List, Dict, Optional, Tuple
 import datetime
 import ipaddress
 import math
@@ -8,6 +9,7 @@ import time
 
 from ping_cmd import Ping
 from ping_logger import PingLogger
+from ping_trace import PingTrace
 import pygui
 
 
@@ -32,11 +34,28 @@ class PyguiPing(Ping):
     def __init__(self, destination: str):
         super().__init__(destination)
         self._is_alive = pygui.Bool(True)
-        self._do_tick = pygui.Bool(True)
+        self._do_tick = pygui.Bool(False)
         self._show_ping_window = pygui.Bool(False)
         self._follow_scroll = pygui.Bool(True)
         self._previous_frame_scroll = 0
         self._show_stats = pygui.Bool(False)
+
+        self._tracert_go = False
+        self._auto_tracert = pygui.Bool(True)
+        self._tracert_hops = pygui.Int(20)
+        self._tracert_pings: List[Ping] = [Ping(self._destination, ttl=i) for i in range(1, self._tracert_hops.value)]
+
+        self._do_live_routing = pygui.Bool(False)
+        self._live_routing_hops = pygui.Int(20)
+        self._live_routing_try_to_merge_done = False
+        self._live_routing_ping_history: List[PingTrace] = []
+        self._live_routing_pings = PingTrace([])
+        self._live_routing: Dict[int, Dict[Tuple[str, str], None]] = {}
+        self._live_routing_pairs: Dict[str, List[Tuple[str, str]]] = {}
+        self._live_routing_wait_reset = 400
+        self._live_routing_wait = self._live_routing_wait_reset
+        self._pygui_hop_positions_for_drawing_before = {}
+        self._pygui_hop_positions_for_drawing_after = {}
 
     def draw(self, should_ping: bool, source_address_for_ping: str):
         # if pygui.get_frame_count() % 60 == 0 and self._do_tick and should_ping:
@@ -55,71 +74,279 @@ class PyguiPing(Ping):
 
         pygui.set_next_window_size((600, 350), pygui.COND_FIRST_USE_EVER)
         if pygui.begin(window_title, self._show_ping_window):
-            pygui.checkbox("Play", self._do_tick)
-            pygui.same_line()
-            if did_clear := pygui.button("Clear"):
-                self._follow_scroll.value = True
-                self._previous_frame_scroll = -1
-                self.clear()
-            pygui.same_line()
-            if self._follow_scroll:
-                pygui.text_disabled("Following")
-            else:
-                pygui.text_disabled("Scrolling")
-                pygui.same_line()
-                if pygui.button("Reset"):
-                    self._follow_scroll.value = True
-            pygui.same_line()
-            pygui.checkbox("Show stats", self._show_stats)
-
-            if self._show_stats:
-                pygui.text(self.get_stats())
-            pygui.begin_child(self.get_found_ip(), (-1, -1), pygui.CHILD_FLAGS_BORDERS)
-
-            if pygui.get_scroll_y() < self._previous_frame_scroll:
-                self._follow_scroll.value = False
-            elif pygui.get_scroll_y() == pygui.get_scroll_max_y():
-                self._follow_scroll.value = True
-            if not did_clear:
-                self._previous_frame_scroll = pygui.get_scroll_y()
-
-            # Demonstrate using clipper for large vertical lists
-            clipper = pygui.ImGuiListClipper.create()
-
-            # This is our first example of not being able to share heap objects
-            # across the dll. I need to get a pointer to a valid type that it
-            # creates, not me. This requires adding a custom constructor and
-            # destructor for the ImGuiListClipper class.
-            clipper.begin(len(self))
-            while clipper.step():
-                for row_n in range(clipper.display_start, clipper.display_end):
-                    # Display a data item
-                    reply = self[row_n]
-
-                    if reply.reply_type is Ping.ReplyType.Success:
-                        pygui.push_style_color(pygui.COL_TEXT, (0, 1, 0, 1))
-                    elif reply.reply_type is Ping.ReplyType.DestinationUnreachable:
-                        pygui.push_style_color(pygui.COL_TEXT, (1, 1, 0, 1))
-                    elif reply.reply_type is Ping.ReplyType.HostUnknown:
-                        pygui.push_style_color(pygui.COL_TEXT, (0, 0, 1, 1))
+            if pygui.begin_tab_bar("### " + window_title + " tabs"):
+                if pygui.begin_tab_item("Pings"):
+                    pygui.checkbox("Play", self._do_tick)
+                    pygui.same_line()
+                    if did_clear := pygui.button("Clear"):
+                        self._follow_scroll.value = True
+                        self._previous_frame_scroll = -1
+                        self.clear()
+                    pygui.same_line()
+                    if self._follow_scroll:
+                        pygui.text_disabled("Following")
                     else:
-                        pygui.push_style_color(pygui.COL_TEXT, (1, 0, 0, 1))
+                        pygui.text_disabled("Scrolling")
+                        pygui.same_line()
+                        if pygui.button("Reset"):
+                            self._follow_scroll.value = True
+                    pygui.same_line()
+                    pygui.checkbox("Show stats", self._show_stats)
 
-                    start_time = datetime.datetime.fromtimestamp(int(reply.start_time))
-                    start_time_str = start_time.strftime("%d/%m/%y @ %H:%M:%S%p")
+                    if self._show_stats:
+                        pygui.text(self.get_stats())
+                    pygui.begin_child(self.get_found_ip(), (-1, -1), pygui.CHILD_FLAGS_BORDERS)
 
-                    pygui.text("[{}] {}".format(
-                        start_time_str,
-                        reply.more_detail_text
-                    ))
+                    if pygui.get_scroll_y() < self._previous_frame_scroll:
+                        self._follow_scroll.value = False
+                    elif pygui.get_scroll_y() == pygui.get_scroll_max_y():
+                        self._follow_scroll.value = True
+                    if not did_clear:
+                        self._previous_frame_scroll = pygui.get_scroll_y()
 
-                    pygui.pop_style_color()
-            clipper.destroy()
+                    # Demonstrate using clipper for large vertical lists
+                    clipper = pygui.ImGuiListClipper.create()
 
-            if self._follow_scroll:
-                pygui.set_scroll_y(pygui.get_scroll_max_y())
+                    # This is our first example of not being able to share heap objects
+                    # across the dll. I need to get a pointer to a valid type that it
+                    # creates, not me. This requires adding a custom constructor and
+                    # destructor for the ImGuiListClipper class.
+                    clipper.begin(len(self))
+                    while clipper.step():
+                        for row_n in range(clipper.display_start, clipper.display_end):
+                            # Display a data item
+                            reply = self[row_n]
 
-            pygui.end_child()
+                            if reply.reply_type is Ping.ReplyType.Success:
+                                pygui.push_style_color(pygui.COL_TEXT, (0, 1, 0, 1))
+                            elif reply.reply_type is Ping.ReplyType.DestinationUnreachable:
+                                pygui.push_style_color(pygui.COL_TEXT, (1, 1, 0, 1))
+                            elif reply.reply_type is Ping.ReplyType.HostUnknown:
+                                pygui.push_style_color(pygui.COL_TEXT, (0, 0, 1, 1))
+                            else:
+                                pygui.push_style_color(pygui.COL_TEXT, (1, 0, 0, 1))
+
+                            start_time = datetime.datetime.fromtimestamp(int(reply.start_time))
+                            start_time_str = start_time.strftime("%d/%m/%y @ %H:%M:%S%p")
+
+                            pygui.text("[{}] {}".format(
+                                start_time_str,
+                                reply.more_detail_text
+                            ))
+
+                            pygui.pop_style_color()
+                    clipper.destroy()
+
+                    if self._follow_scroll:
+                        pygui.set_scroll_y(pygui.get_scroll_max_y())
+
+                    pygui.end_child()
+                    pygui.end_tab_item()
+                
+                if pygui.begin_tab_item("Trace Route"):
+                    pygui.slider_int("Hops", self._tracert_hops, 1, 255, flags=pygui.SLIDER_FLAGS_CLAMP_ON_INPUT | pygui.SLIDER_FLAGS_ALWAYS_CLAMP)
+                    
+                    if pygui.button("Go"):
+                        self._tracert_pings: List[Ping] = [Ping(self._destination, ttl=i, do_reverse_dns_on_found_destination=True) for i in range(1, self._tracert_hops.value)]
+                        self._tracert_go = True
+
+                    if self._tracert_go:
+                        for ping in self._tracert_pings:
+                            if len(ping.get_replies()) < 3:
+                                ping.tick()
+
+                    if pygui.begin_table("tracert " + self._destination, 6):
+                        pygui.table_setup_column("TTL",            flags=pygui.TABLE_COLUMN_FLAGS_WIDTH_FIXED)
+                        pygui.table_setup_column("1",              flags=pygui.TABLE_COLUMN_FLAGS_WIDTH_FIXED)
+                        pygui.table_setup_column("2",              flags=pygui.TABLE_COLUMN_FLAGS_WIDTH_FIXED)
+                        pygui.table_setup_column("3",              flags=pygui.TABLE_COLUMN_FLAGS_WIDTH_FIXED)
+                        pygui.table_setup_column("Reverse Lookup", flags=pygui.TABLE_COLUMN_FLAGS_WIDTH_FIXED)
+                        pygui.table_setup_column("Status")
+                        pygui.table_headers_row()
+
+                        def show_ms(reply: Optional[Ping.Reply]):
+                            if reply is None and self._tracert_go:
+                                return "-/|\\"[(pygui.get_frame_count() // 30) % 4]
+
+                            if reply is None:
+                                return ""
+                            
+                            if reply.response_time is None:
+                                return "."
+                            
+                            return "{} ms".format(round(reply.response_time))
+                    
+                        for ping in self._tracert_pings:
+                            pygui.table_next_row()
+                            pygui.table_next_column()
+                            pygui.text(str(ping.get_ttl()))
+
+                            replies = ping.get_replies()
+                            replies_safe = replies + [None, None, None]
+                            pygui.table_next_column()
+                            pygui.text(show_ms(replies_safe[0]))
+                            pygui.table_next_column()
+                            pygui.text(show_ms(replies_safe[1]))
+                            pygui.table_next_column()
+                            pygui.text(show_ms(replies_safe[2]))
+
+                            pygui.table_next_column()
+                            if replies_safe[0] and replies_safe[0].response_time:
+                                pygui.text(ping.get_reverse_dns_lookup() or "")
+                            else:
+                                pygui.text("")
+                            pygui.table_next_column()
+
+                            # TODO: Choose the best best to show
+                            if len(replies) == 0:
+                                pygui.text("")
+                            else:
+                                chosen_reply = replies[0]
+                                for reply in replies:
+                                    if reply.response_time:
+                                        chosen_reply = reply
+                                pygui.text(str(chosen_reply))
+
+                        pygui.end_table()
+                    
+                    pygui.end_tab_item()
+                
+                if pygui.begin_tab_item("Live Routing"):
+                    if pygui.checkbox("Start", self._do_live_routing):
+                        self._live_routing_pings = PingTrace(
+                            [Ping(self._destination, ttl=i) for i in range(1, self._live_routing_hops.value)]
+                        )
+                    pygui.text("Wait: {}".format(self._live_routing_wait))
+                    for i, ping_trace in enumerate(self._live_routing_ping_history):
+                        pygui.color_edit3("Path {}".format(i + 1), ping_trace.ping_colour)
+                
+                    if self._do_live_routing:
+                        self._live_routing_pings.tick()
+
+                        if self._live_routing_pings.trace_complete():
+                            if not self._live_routing_try_to_merge_done:
+                                merged = False
+                                for existing_trace in self._live_routing_ping_history:
+                                    if existing_trace.merge(self._live_routing_pings):
+                                        merged = True
+                                        continue
+                                if not merged and self._live_routing_pings not in self._live_routing_ping_history:
+                                    self._live_routing_ping_history.append(self._live_routing_pings)
+                                self._live_routing_try_to_merge_done = True
+                            
+                            self._live_routing_wait -= 1
+                            if self._live_routing_wait == 0:
+                                self._live_routing_wait = self._live_routing_wait_reset
+                                self._live_routing_pings = PingTrace([Ping(self._destination, ttl=i) for i in range(1, self._live_routing_hops.value)])
+                                self._live_routing_try_to_merge_done = False
+                    
+                    paths_share_hops_n_times: Dict[int, Dict[str, str]] = {}
+                    for hop_n in range(1, self._tracert_hops.value):
+                        if hop_n not in paths_share_hops_n_times:
+                            paths_share_hops_n_times[hop_n] = {}       
+                                                 
+                        for ping_trace in self._live_routing_ping_history:
+                            if not ping_trace.trace_complete():
+                                continue
+
+                            try:
+                                hop_ip = ping_trace.get_hop(hop_n)
+                            except IndexError:
+                                print("Silent Error :(")
+                                continue
+
+                            if hop_ip not in paths_share_hops_n_times[hop_n]:
+                                paths_share_hops_n_times[hop_n][hop_ip] = 0
+                            paths_share_hops_n_times[hop_n][hop_ip] += 1
+
+                    for hop_n in range(1, self._tracert_hops.value):
+                        if hop_n > 1:
+                            pygui.same_line()
+                        pygui.begin_group()
+                        pygui.text("Hop {}".format(hop_n).ljust(len("123.456.789.123 padd"), " "))
+                        for hop_ip in paths_share_hops_n_times[hop_n].keys():
+                            self._pygui_hop_positions_for_drawing_before[(hop_n, hop_ip)] = (
+                                pygui.get_cursor_screen_pos()[0],
+                                pygui.get_cursor_screen_pos()[1] + pygui.get_text_line_height() / 2,
+                            )
+                            if hop_ip != "":
+                                pygui.text(hop_ip)
+                            pygui.same_line()
+                            self._pygui_hop_positions_for_drawing_after[(hop_n, hop_ip)] = (
+                                pygui.get_cursor_screen_pos()[0],
+                                pygui.get_cursor_screen_pos()[1] + pygui.get_text_line_height() / 2,
+                            )
+                            pygui.dummy((0, 0))
+
+                        pygui.end_group()
+                    
+                    dl = pygui.get_window_draw_list()
+
+                    paths_start_share_drawn_n_times = {}
+                    paths_end_share_drawn_n_times = {}
+                    for ping_trace in self._live_routing_ping_history:
+                        if not ping_trace.trace_complete():
+                            continue
+
+                        hops = ping_trace.get_hops()
+
+                        # for i, hop_ip in enumerate(hops):
+                        #     j = i + 1
+                        #     next_valid_hop_ip = None
+                        #     while j < len(hops) - 1:
+                        #         if hops[j] != "":
+                        #             next_valid_hop_ip = hops[j]
+                        #             break
+
+                        #         j += 1
+                            
+                        #     if next_valid_hop_ip is None:
+                        #         continue
+
+                        #     dl.add_line(
+                        #         self._pygui_hop_positions_for_drawing_after[(i + 1,             hop_ip)],
+                        #         self._pygui_hop_positions_for_drawing_before[(j + 1, next_valid_hop_ip)],
+                        #         ping_trace.ping_colour.to_u32(),
+                        #     )
+
+
+                        for hop_n, (first_hop, second_hop) in enumerate(zip(hops, hops[1:]), start=1):
+                            if first_hop == "" or second_hop == "":
+                                continue
+                            
+                            if (hop_n, first_hop) not in paths_start_share_drawn_n_times:
+                                paths_start_share_drawn_n_times[(hop_n, first_hop)] = 0
+                            if (hop_n + 1, second_hop) not in paths_end_share_drawn_n_times:
+                                paths_end_share_drawn_n_times[(hop_n + 1, second_hop)] = 0
+                            
+                            first_offset = paths_start_share_drawn_n_times[(hop_n, first_hop)]
+                            second_offset = paths_end_share_drawn_n_times[(hop_n + 1, second_hop)]
+
+                            paths_start_share_drawn_n_times[(hop_n, first_hop)] += 1
+                            paths_end_share_drawn_n_times[(hop_n + 1, second_hop)] += 1
+
+                            # first_shared_n_times = paths_share_hops_n_times[hop_n][first_hop]
+                            # second_shared_n_times = paths_share_hops_n_times[hop_n + 1][second_hop]
+
+                            first_pos = self._pygui_hop_positions_for_drawing_after[(hop_n, first_hop)]
+                            first_pos = (
+                                first_pos[0],
+                                first_pos[1] + 2 * first_offset
+                            )
+                            second_pos = self._pygui_hop_positions_for_drawing_before[(hop_n + 1, second_hop)]
+                            second_pos = (
+                                second_pos[0],
+                                second_pos[1] + 2 * second_offset
+                            )
+
+                            dl.add_line(
+                                first_pos,
+                                second_pos,
+                                ping_trace.ping_colour.to_u32(),
+                            )
+
+                    pygui.end_tab_item()
+                pygui.end_tab_bar()
         pygui.end()
 
     def is_alive(self) -> bool:

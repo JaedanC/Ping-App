@@ -13,6 +13,7 @@ from io import StringIO
 
 import ping3
 ping3.EXCEPTIONS = True
+# ping3.DEBUG = True
 
 
 def time_to_excel(query_time: float) -> str:
@@ -22,6 +23,8 @@ def time_to_excel(query_time: float) -> str:
 
 
 class Ping:
+    ping3_lock = threading.Lock()
+
     class ReplyType(Enum):
         Success = auto()
         TimeToLiveExpired = auto()
@@ -33,11 +36,11 @@ class Ping:
         Timeout = auto()
         PingError = auto()
 
-
     class Reply:
         def __init__(
                 self,
                 destination: str,
+                found_ip: str,
                 reply_type: Ping.ReplyType,
                 start_time: float,
                 end_time: float,
@@ -46,6 +49,7 @@ class Ping:
                 response_ip: Optional[str] = None,
             ):
             self.destination = destination
+            self.found_ip = found_ip
             self.reply_type = reply_type
             self.start_time = start_time
             self.end_time = end_time
@@ -68,7 +72,12 @@ class Ping:
         def csv_headers():
             return "Timestamp,Reply,IP,Response Time (ms)"
 
-    def __init__(self, destination: str):
+    def __init__(
+            self,
+            destination: str,
+            ttl: Optional[int]=None,
+            do_reverse_dns_on_found_destination: bool = False,
+        ):
         # This is what we supply to the ping command.
         self._destination: str = destination
         # If the supplied IP is fqdn, then this will be updated to include the
@@ -78,11 +87,15 @@ class Ping:
         # under the fqdn. If the IP Address is not pingable, then this will be
         # None.
         self._found_ip: Optional[str] = None
+        self._ttl_expired_ip: Optional[str] = None
         self._replies: List[Ping.Reply] = []
         self._is_running = False
         self._thread_done = False
+        self._do_reverse_dns_on_found_destination = do_reverse_dns_on_found_destination
+        self._reverse_dns_lookup_result = None
         # For linting
         self._source_address = ""
+        self._ttl = ttl
         self._t = None
         self._i = 0
 
@@ -115,17 +128,29 @@ class Ping:
         #
         start_time = time.time()
         error = None
+        ttl_expired = False
         try:
+            # with Ping.ping3_lock:
             response_time = ping3.ping(
                 self._destination,
                 src_addr=self._source_address,
                 unit="ms",
-                # timeout=8,
+                ttl=self._ttl,
+                seq=self._ttl or 0
+                # timeout=4,
             )
             reply_type = Ping.ReplyType.Success
+        except socket.gaierror:
+            pass
         except ping3.errors.TimeToLiveExpired as e:
+            end_time = time.time()
+            response_time = (end_time - start_time) * 1000
             error = e
             reply_type = Ping.ReplyType.TimeToLiveExpired
+            self._ttl_expired_ip = e.ip_header["src_addr"]
+            self._found_ip = self._ttl_expired_ip
+            self._found_destination_text = f"TTL: {self._ttl} got to [{self._found_ip}]"
+            ttl_expired = True
         except ping3.errors.DestinationHostUnreachable as e:
             error = e
             reply_type = Ping.ReplyType.DestinationHostUnreachable
@@ -175,21 +200,29 @@ class Ping:
         #
         #     Ping statistics for 8.8.8.7:
         #         Packets: Sent = 1, Received = 0, Lost = 1 (100% loss)
-        try:
-            self._found_ip = socket.gethostbyname(self._destination)  # Domain name will translated into IP address, and IP address leaves unchanged.
-            if self._found_ip != self._destination:
-                self._found_destination_text = f"{self._destination} [{self._found_ip}]"
-        except socket.gaierror:
-            pass
+        if not ttl_expired:
+            try:
+                self._found_ip = socket.gethostbyname(self._destination)  # Domain name will translated into IP address, and IP address leaves unchanged.
+                if self._found_ip != self._destination:
+                    self._found_destination_text = f"{self._destination} [{self._found_ip}]"
+            except socket.gaierror:
+                pass
+        
+        if self._do_reverse_dns_on_found_destination:
+            try:
+                self._reverse_dns_lookup_result, _, _ = socket.gethostbyaddr(self._found_ip)
+            except socket.herror:
+                pass
 
         if error is None:
-            line_text = "Ping to {}: {:.5f}ms".format(self._found_destination_text or self._found_ip, response_time)
+            line_text = "{}: {:.5f}ms".format(self._found_destination_text or self._found_ip, response_time)
         else:
-            line_text = "Ping to {}: {}".format(self._found_destination_text or self._found_ip, error)
+            line_text = "{}: {}".format(self._found_destination_text or self._found_ip, error)
 
         if reply_type is not None:
             self._replies.append(Ping.Reply(
                 self._destination,
+                self._found_ip,
                 reply_type,
                 start_time,
                 end_time,
@@ -239,8 +272,14 @@ class Ping:
     def get_destination(self) -> str:
         return self._destination
 
+    def get_ttl_expired_ip(self) -> Optional[str]:
+        return self._ttl_expired_ip 
+
     def get_successes(self) -> List[Ping.Reply]:
         return [r for r in self._replies if r.reply_type is Ping.ReplyType.Success]
+
+    def get_ttl(self) -> Optional[int]:
+        return self._ttl
 
     def get_stats(self) -> str:
         packets = len(self._replies)
@@ -272,4 +311,7 @@ class Ping:
         return self._is_running
 
     def get_replies(self) -> List[Ping.Reply]:
-        return self._replies#
+        return self._replies
+
+    def get_reverse_dns_lookup(self) -> Optional[str]:
+        return self._reverse_dns_lookup_result

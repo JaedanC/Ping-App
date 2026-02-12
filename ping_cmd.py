@@ -77,6 +77,7 @@ class Ping:
             destination: str,
             ttl: Optional[int]=None,
             do_reverse_dns_on_found_destination: bool = False,
+            timeout=4,
         ):
         # This is what we supply to the ping command.
         self._destination: str = destination
@@ -91,6 +92,7 @@ class Ping:
         self._replies: List[Ping.Reply] = []
         self._is_running = False
         self._thread_done = False
+        self._timeout = timeout
         self._do_reverse_dns_on_found_destination = do_reverse_dns_on_found_destination
         self._reverse_dns_lookup_result = None
         # For linting
@@ -136,8 +138,8 @@ class Ping:
                 src_addr=self._source_address,
                 unit="ms",
                 ttl=self._ttl,
-                seq=self._ttl or 0
-                # timeout=4,
+                seq=self._ttl or 0,
+                timeout=self._timeout,
             )
             reply_type = Ping.ReplyType.Success
         except socket.gaierror:
@@ -208,11 +210,6 @@ class Ping:
             except socket.gaierror:
                 pass
         
-        if self._do_reverse_dns_on_found_destination:
-            try:
-                self._reverse_dns_lookup_result, _, _ = socket.gethostbyaddr(self._found_ip)
-            except socket.herror:
-                pass
 
         if error is None:
             line_text = "{}: {:.5f}ms".format(self._found_destination_text or self._found_ip, response_time)
@@ -231,7 +228,14 @@ class Ping:
                 self._found_destination_text
             ))
 
+        if self._do_reverse_dns_on_found_destination and self._found_ip is not None:
+            try:
+                self._reverse_dns_lookup_result, _, _ = socket.gethostbyaddr(self._found_ip)
+            except socket.herror:
+                pass
+
         self._thread_done = True
+
 
     def tick(self, source_address: str = ""):
         if self._thread_done:

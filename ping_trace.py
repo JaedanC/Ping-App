@@ -49,10 +49,11 @@ class PingTrace:
     def is_marked(self) -> bool:
         return self._is_marked
 
-    def get_hops(self) -> List[str]:
+    def get_hops(self, up_to=None) -> List[str]:
         assert self.trace_complete(), "Can only ask for the hops once the trace is complete"
 
-        return [self.get_hop(i) for i in range(len(self.pings))]
+        max_pings = len(self.pings)
+        return [self.get_hop(i) for i in range(0, min(up_to, max_pings) if up_to is not None else max_pings)]
 
     def get_hop(self, hop: int) -> str:
         assert self.trace_complete(), "Can only ask for a hop once the trace is complete"
@@ -88,14 +89,13 @@ class PingTrace:
             for i, ping in enumerate(self.pings):
                 if len(ping.get_successes()) > 0:
                     return did_merge, i + 1
-        else:
-            return did_merge, None
+        return did_merge, None
 
     def get_hits(self) -> int:
         return self._hits
 
     def clear_hits(self):
-        self._hits = 1
+        self._hits = 0
 
     def normalise(self) -> bool:
         # Truncate any excess pings that go to the end location
@@ -224,7 +224,7 @@ class LiveRouting:
                 merged, recommendation = trace.merge_mark_and_recommend(self._current_trace)
                 if merged:
                     did_merge = True
-                    self._next_run_recommended_hops = recommendation
+                    self._next_run_recommended_hops = recommendation or self._hops.value
             
             # The trace must be unique
             if not did_merge:
@@ -248,8 +248,10 @@ class LiveRouting:
         """
         ttl_lookup: Dict[int, Dict[str, List[Ping]]] = defaultdict(dict)
         for trace in self._unique_paths:
-            for i in range(self._hops.value):
+            if not trace.show:
+                continue
 
+            for i in range(self._hops.value):
                 try:
                     hop_ip = trace.get_hop(i)
                     ping = trace.get_ping(i)
@@ -275,6 +277,7 @@ class LiveRouting:
                 pygui.same_line()
                 pygui.text_disabled("Selected")
 
+        # self._draw_locations.clear()
         if pygui.begin_child("Live Routing " + self._destination, child_flags=pygui.CHILD_FLAGS_BORDERS):
             unique_hops = self._get_unique_hops()
             for hop, unique_hop in unique_hops.items():
@@ -316,10 +319,10 @@ class LiveRouting:
             # Custom line drawing
             self._draw_location_counts = defaultdict(int)
             for trace in self._unique_paths:
-                if not ping_trace.show:
+                if not trace.show:
                     continue
             
-                hop_ips = trace.get_hops()
+                hop_ips = trace.get_hops(up_to=self._hops.value)
 
                 for hop, (hop_ip_a, hop_ip_b) in enumerate(zip(hop_ips, hop_ips[1:])):
                     dl = pygui.get_window_draw_list()

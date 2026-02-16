@@ -11,6 +11,7 @@ from ping_cmd import Ping
 from ping_logger import PingLogger
 from ping_trace import PingTrace, LiveRouting
 from helper import clamp, lerp
+from dns_cache import DNSCache
 import pygui
 
 
@@ -648,6 +649,8 @@ class PingApp:
         self.extend_ping_by_x_pixels = pygui.Int(1)
         self.source_address_for_pings = pygui.String("")
 
+        self.dns_cache = DNSCache()
+
     def refresh_ip_folder(self):
         if not os.path.exists(PingApp.IPS_DIRECTORY):
             os.makedirs(PingApp.IPS_DIRECTORY)
@@ -1100,6 +1103,9 @@ class PingApp:
         pygui.color_edit3("High Ping", PingApp.colour_success_high_ping) # pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
         pygui.color_edit3("Timeout",   PingApp.colour_timeout)           # pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
 
+    def draw_dns_cache(self):
+        self.dns_cache.draw()
+
     def draw(self):
         main_viewport = pygui.get_main_viewport()
         id_ = pygui.get_id("Main view")
@@ -1123,4 +1129,8 @@ class PingApp:
         pygui.set_next_window_dock_id(ds, pygui.COND_FIRST_USE_EVER)
         if pygui.begin("Colour editor"):
             self.draw_colour_editor()
+        pygui.end()
+
+        if pygui.begin("DNS Cache"):
+            self.draw_dns_cache()
         pygui.end()

@@ -1,0 +1,1 @@
+Get-DnsClientCache | ConvertTo-Csv -NoTypeInformation

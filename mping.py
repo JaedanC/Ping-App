@@ -9,9 +9,10 @@ import time
 
 from ping_cmd import Ping
 from ping_logger import PingLogger
-from ping_trace import PingTrace, LiveRouting
-from helper import clamp, lerp
+from ping_trace import LiveRouting
+from helper import clamp
 from dns_cache import DNSCache
+
 import pygui
 
 
@@ -38,22 +39,6 @@ class PyguiPing(Ping):
         self._auto_tracert = pygui.Bool(True)
         self._tracert_hops = pygui.Int(20)
         self._tracert_pings: List[Ping] = [Ping(self._destination, ttl=i) for i in range(1, self._tracert_hops.value)]
-
-        self._do_live_routing = pygui.Bool(False)
-        self._live_routing_hops = pygui.Int(20)
-        self._live_routing_auto_limit = pygui.Bool(True)
-        self._live_routing_auto_truncate = pygui.Bool(True)
-        self._live_routing_show_line_between_timeout = pygui.Bool(False)
-        self._live_routing_ping_timeout = pygui.Int(2)
-        self._live_routing_wait_reset = pygui.Int(6)
-        self._live_routing_wait = self._live_routing_wait_reset.value * 60
-        self._live_routing_current_trace = PingTrace([])
-        self._live_routing_ping_history: List[PingTrace] = []
-        self._live_routing_try_to_merge_done = False
-        self._live_routing: Dict[int, Dict[Tuple[str, str], None]] = {}
-        self._pygui_hop_positions_for_drawing_before = {}
-        self._pygui_hop_positions_for_drawing_after = {}
-
         self._live_routing_app = LiveRouting(self._destination)
 
     def draw(self, should_ping: bool, source_address_for_ping: str):
@@ -83,10 +68,6 @@ class PyguiPing(Ping):
                     pygui.end_tab_item()
                 
                 if pygui.begin_tab_item("Live Routing"):
-                    self.live_routing_tab()
-                    pygui.end_tab_item()
-
-                if pygui.begin_tab_item("Live Routing New"):
                     self._live_routing_app.tick()
                     self._live_routing_app.draw()
                     pygui.end_tab_item()
@@ -228,254 +209,6 @@ class PyguiPing(Ping):
                     pygui.text(str(chosen_reply))
 
             pygui.end_table()
-                    
-    def live_routing_tab(self):
-        pygui.push_item_width(100)
-        pygui.input_int("Hops", self._live_routing_hops)
-        pygui.same_line()
-        pygui.checkbox("Auto-limit", self._live_routing_auto_limit)
-        pygui.same_line()
-        pygui.checkbox("Truncate", self._live_routing_auto_truncate)
-        pygui.input_int("Timeout wait", self._live_routing_ping_timeout)
-        pygui.input_int("Ping frequency", self._live_routing_wait_reset)
-        pygui.pop_item_width()
-        self._live_routing_hops.value = clamp(self._live_routing_hops.value, 1, 255)
-        self._live_routing_ping_timeout.value = clamp(self._live_routing_ping_timeout.value, 1, 4)
-        self._live_routing_wait_reset.value = clamp(self._live_routing_wait_reset.value, 1, 6)
-        if pygui.checkbox("Start", self._do_live_routing):
-            self._live_routing_current_trace = PingTrace(
-                [Ping(
-                    self._destination,
-                    ttl=i + 1,
-                    do_reverse_dns_on_found_destination=True,
-                    timeout=self._live_routing_ping_timeout.value
-                ) for i in range(self._live_routing_hops.value)]
-            )
-        pygui.same_line()
-        if pygui.button(f"Clear### Live rouing {self._destination}"):
-            self._live_routing_ping_history.clear()
-        
-        pygui.same_line()
-        cx, cy = pygui.get_cursor_screen_pos()
-        dl = pygui.get_window_draw_list()
-        dl.path_arc_to(
-            (cx + 10, cy + pygui.get_text_line_height_with_spacing()/2),
-            pygui.get_text_line_height() / 2,
-            0,
-            math.radians((1 - (self._live_routing_wait / (self._live_routing_wait_reset.value * 60))) * -360)
-        )
-        dl.path_stroke(
-            pygui.Vec4(0.5, 0.5, 0.5, 1).to_u32(),
-            0,
-            2
-        )
-        pygui.dummy((0, 0))
-        pygui.checkbox("Show Line between Timeouts", self._live_routing_show_line_between_timeout)
-
-        for i, ping_trace in enumerate(self._live_routing_ping_history):
-            pygui.checkbox(f"### Show {i} {self._destination}", ping_trace.show)
-            pygui.same_line()
-            pygui.color_edit3("Path {}".format(i + 1), ping_trace.ping_colour, pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
-            pygui.same_line()
-            if pygui.button("Clear ### Live Routing Hop: {} {}".format(self._destination, i)):
-                ping_trace.clear_hits()
-            pygui.same_line()
-            pygui.text("Hits: {}".format(ping_trace.get_hits()))
-    
-        if self._do_live_routing:
-            self._live_routing_current_trace.tick()
-
-            if self._live_routing_current_trace.trace_complete():
-                if not self._live_routing_try_to_merge_done:
-                    merged = False
-                    for existing_trace in self._live_routing_ping_history:
-                        if existing_trace.merge_and_mark(self._live_routing_current_trace):
-                            merged = True
-                            continue
-                    if not merged and self._live_routing_current_trace not in self._live_routing_ping_history:
-                        self._live_routing_ping_history.append(self._live_routing_current_trace)
-                    self._live_routing_try_to_merge_done = True
-
-                    # Let's truncate the hops to include only up to the destination to avoid
-                    # slamming the end-point, but don't delete history of other pings.
-                    if self._live_routing_auto_limit:
-                        for hop_n, ping in enumerate(self._live_routing_current_trace.get_pings()):
-                            if len(ping.get_successes()) > 0:
-                                if self._live_routing_auto_truncate:
-                                    self._live_routing_current_trace.pings = self._live_routing_current_trace.pings[:hop_n + 1]
-                                break
-                        largest_ttl_to_keep = 0
-                        for ping_trace in self._live_routing_ping_history:
-                            largest_ttl_to_keep = max(largest_ttl_to_keep, len(ping_trace))
-                        self._live_routing_hops.value = largest_ttl_to_keep
-                
-                self._live_routing_wait -= 1
-                if self._live_routing_wait == 0:
-                    self._live_routing_wait = self._live_routing_wait_reset.value * 60
-                    self._live_routing_current_trace = PingTrace([
-                        Ping(
-                            self._destination,
-                            ttl=i + 1,
-                            do_reverse_dns_on_found_destination=True, # Doing the DNS query each second slows it down quite a lot.
-                            timeout=self._live_routing_ping_timeout.value
-                        ) for i in range(self._live_routing_hops.value)])
-                    self._live_routing_try_to_merge_done = False
-        
-        ping_lookup: Dict[int, Dict[str, Ping]] = {}
-        for hop_n in range(self._live_routing_hops.value):
-            if hop_n not in ping_lookup:
-                ping_lookup[hop_n] = {}       
-                                        
-            for ping_trace in self._live_routing_ping_history:
-                if not ping_trace.trace_complete():
-                    continue
-
-                try:
-                    hop_ip = ping_trace.get_hop(hop_n)
-                    ping = ping_trace.get_ping(hop_n)
-                except IndexError:
-                    # That's okay. There are likely two ping_traces
-                    # with different lengths in the history
-                    continue
-
-                if hop_ip not in ping_lookup[hop_n]:
-                    ping_lookup[hop_n][hop_ip] = ping
-
-        if pygui.begin_child("Live routing window", child_flags=pygui.CHILD_FLAGS_BORDERS):
-            for hop_n in range(self._live_routing_hops.value):
-                if hop_n > 0:
-                    pygui.same_line()
-                pygui.begin_group()
-                pygui.text("Hop {}".format(hop_n + 1).ljust(len("xxx.xxx.xxx.xxx dd"), " "))
-                for hop_ip, ping in ping_lookup[hop_n].items():
-                    self._pygui_hop_positions_for_drawing_before[(hop_n, hop_ip)] = (
-                        pygui.get_cursor_screen_pos()[0],
-                        pygui.get_cursor_screen_pos()[1] + pygui.get_text_line_height() / 2,
-                    )
-                    if hop_ip != "" and len(ping.get_successes()) > 0:
-                        pygui.text_colored(pygui.Vec4(0, 1, 0, 1).tuple(), hop_ip)
-                    elif hop_ip != "":
-                        pygui.text(hop_ip)
-                    else:
-                        pygui.dummy((pygui.calc_text_size("xxx.xxx.xxx.xxx")[0], pygui.get_text_line_height()))
-                    pygui.same_line()
-                    self._pygui_hop_positions_for_drawing_after[(hop_n, hop_ip)] = (
-                        pygui.get_cursor_screen_pos()[0],
-                        pygui.get_cursor_screen_pos()[1] + pygui.get_text_line_height() / 2,
-                    )
-                    pygui.dummy((0, 0))
-                    if hop_ip != "":
-                        pygui.text((ping.get_reverse_dns_lookup() or "") if ping.get_replies()[0].reply_type != Ping.ReplyType.Timeout else "")
-                    else:
-                        pygui.dummy((pygui.calc_text_size("xxx.xxx.xxx.xxx")[0], pygui.get_text_line_height()))
-
-
-                pygui.end_group()
-            
-            dl = pygui.get_window_draw_list()
-
-            paths_start_share_drawn_n_times = {}
-            paths_end_share_drawn_n_times = {}
-            for ping_trace in self._live_routing_ping_history:
-                if not ping_trace.trace_complete():
-                    continue
-
-                if not ping_trace.show:
-                    continue
-
-                hops = ping_trace.get_hops()
-
-                def draw_line(first_hop_n, second_hop_n, first_hop, second_hop) -> Tuple[Tuple[int, int], Tuple[int, int]]:
-                    if (first_hop_n, first_hop) not in paths_start_share_drawn_n_times:
-                        paths_start_share_drawn_n_times[(first_hop_n, first_hop)] = 0
-                    
-                    if (second_hop_n, second_hop) not in paths_end_share_drawn_n_times:
-                        paths_end_share_drawn_n_times[(second_hop_n, second_hop)] = 0
-                    
-                    first_offset = paths_start_share_drawn_n_times[(first_hop_n, first_hop)]
-                    paths_start_share_drawn_n_times[(first_hop_n, first_hop)] += 1
-
-                    second_offset = paths_end_share_drawn_n_times[(second_hop_n, second_hop)]
-                    paths_end_share_drawn_n_times[(second_hop_n, second_hop)] += 1
-
-                    first_pos = self._pygui_hop_positions_for_drawing_after[(first_hop_n, first_hop)]
-                    first_pos = (
-                        first_pos[0],
-                        first_pos[1] - 4 + 3 * first_offset
-                    )
-                    second_pos = self._pygui_hop_positions_for_drawing_before[(second_hop_n, second_hop)]
-                    second_pos = (
-                        second_pos[0] - 5,
-                        second_pos[1] - 4 + 3 * second_offset
-                    )
-
-                    dl.add_line(
-                        first_pos,
-                        second_pos,
-                        ping_trace.ping_colour.to_u32(),
-                        thickness=2
-                    )
-
-                    return first_pos, second_pos
-                
-                def draw_line_timeout(first_hop_n, first_hop):
-                    if (first_hop_n, first_hop) not in paths_start_share_drawn_n_times:
-                        paths_start_share_drawn_n_times[(first_hop_n, first_hop)] = 0
-                    
-                    offset = paths_start_share_drawn_n_times[(first_hop_n, first_hop)]
-
-                    first_pos = self._pygui_hop_positions_for_drawing_before[(first_hop_n, first_hop)]
-                    first_pos = (
-                        first_pos[0] - 5,
-                        first_pos[1] - 4  + 3 * offset
-                    )
-                    second_pos = self._pygui_hop_positions_for_drawing_after[(first_hop_n, first_hop)]
-                    second_pos = (
-                        second_pos[0],
-                        second_pos[1] - 4  + 3 * offset
-                    )
-
-                    dl.add_line(
-                        first_pos,
-                        second_pos,
-                        ping_trace.ping_colour.to_u32(),
-                        thickness=2
-                    )
-
-                if self._live_routing_show_line_between_timeout:
-                    for hop_n, first_hop in enumerate(hops):
-                        if first_hop == "":
-                            continue
-
-                        next_hop_n = hop_n + 1
-                        second_hop = None
-                        while next_hop_n < len(hops):
-                            if hops[next_hop_n] != "":
-                                second_hop = hops[next_hop_n]
-                                break
-
-                            next_hop_n += 1
-                        
-                        if second_hop is None:
-                            continue
-
-                        ps, pe = draw_line(hop_n, next_hop_n, first_hop, second_hop)
-
-                        if ping_trace.is_marked():
-                            lerp_point = lerp(ps, pe, (pygui.get_frame_count() % 120) / 120)
-                            dl.add_circle_filled(lerp_point, 4, ping_trace.ping_colour.to_u32())
-                else:
-                    for hop_n, (first_hop, second_hop) in enumerate(zip(hops, hops[1:])):
-                        if first_hop == "":
-                            draw_line_timeout(hop_n, first_hop)
-                        
-                        ps, pe = draw_line(hop_n, hop_n + 1, first_hop, second_hop)
-                
-                        if ping_trace.is_marked():
-                            lerp_point = lerp(ps, pe, (pygui.get_frame_count() % 120) / 120)
-                            dl.add_circle_filled(lerp_point, 4, ping_trace.ping_colour.to_u32())
-
-        pygui.end_child()
 
     def is_alive(self) -> bool:
         return bool(self._is_alive)
@@ -919,7 +652,11 @@ class PingApp:
         SCROLL_SPEED_MULT = 15
         scroll_wheel_movement = 0
         if pygui.is_window_hovered(pygui.HOVERED_FLAGS_CHILD_WINDOWS):
-            scroll_wheel_movement = pygui.get_io().mouse_wheel_h * SCROLL_SPEED_MULT
+            # Allow scrolling left and right using the mouse while holding shift
+            if pygui.get_io().mouse_wheel_request_axis_swap:
+                scroll_wheel_movement = pygui.get_io().mouse_wheel * SCROLL_SPEED_MULT
+            else:
+                scroll_wheel_movement = pygui.get_io().mouse_wheel_h * SCROLL_SPEED_MULT
         self.scroll_amount.value -= scroll_wheel_movement
         self.scroll_amount.value = clamp(self.scroll_amount.value, 0, self.scroll_max.value)
 
@@ -1110,6 +847,10 @@ class PingApp:
         main_viewport = pygui.get_main_viewport()
         id_ = pygui.get_id("Main view")
         ds = pygui.dock_space_over_viewport(id_, main_viewport)
+
+        # Holding SHIFT lets you scroll left and right on a mouse
+        if pygui.is_key_down(pygui.MOD_SHIFT):
+            pygui.set_next_window_scroll((pygui.get_scroll_x() + pygui.get_io().mouse_wheel_h, -1))
 
         pygui.set_next_window_dock_id(ds, pygui.COND_FIRST_USE_EVER)
         if pygui.begin("Load IPs", None):

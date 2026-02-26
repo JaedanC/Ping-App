@@ -1,14 +1,15 @@
 from __future__ import annotations
+import math
+import random
+import colorsys
 from collections import defaultdict
 from typing import List, Dict, Tuple, Optional
 from enum import Enum, auto
-import math
-import random
-import pygui
-import colorsys
 
 from helper import clamp, lerp
 from ping_cmd import Ping
+
+import pygui
 
 
 class PingTrace:

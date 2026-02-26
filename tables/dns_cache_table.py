@@ -1,9 +1,9 @@
 from __future__ import annotations
 import time
 
-import pygui
-
 from .table import Table
+
+import pygui
 
 
 class DNSCacheTable(Table):
@@ -43,17 +43,19 @@ class DNSCacheTable(Table):
         }
         pygui.text("{}".format(lookup.get(dns_entry["Type"]) or dns_entry["Type"]))
     
-    def merge(self, other: DNSCacheTable):
-        final_set = {}
-        same_fields_to_be_considered_same = ["Entry", "Name"]
-        for s_row in self.data:
-            seconds_since_refresh = round(time.time() - self.creation_time)
-            value = max(int(s_row["TimeToLive"]) - seconds_since_refresh, 0)
-            s_row["TimeToLive"] = value
-            
-            final_set[tuple(s_row[field] for field in same_fields_to_be_considered_same)] = s_row
-        for o_row in other.data:
-            final_set[tuple(o_row[field] for field in same_fields_to_be_considered_same)] = o_row
-
+    def merge(self, other: DNSCacheTable, keep_expired: bool):
+        if keep_expired:
+            final_set = {}
+            same_fields_to_be_considered_same = ["Entry", "Name", "Data"]
+            for s_row in self.data:
+                seconds_since_refresh = round(time.time() - self.creation_time)
+                value = max(int(s_row["TimeToLive"]) - seconds_since_refresh, 0)
+                s_row["TimeToLive"] = value
+                
+                final_set[tuple(s_row[field] for field in same_fields_to_be_considered_same)] = s_row
+            for o_row in other.data:
+                final_set[tuple(o_row[field] for field in same_fields_to_be_considered_same)] = o_row
+            self.data = list(final_set.values())
+        else:
+            self.data = other.data
         self.creation_time = other.creation_time
-        self.data = list(final_set.values())

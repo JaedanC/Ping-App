@@ -1,15 +1,15 @@
-from typing import List
 import csv
 import json
 import math
 import re
 import subprocess
-from threading import Thread, Lock
 import time
 from io import StringIO
+from threading import Thread, Lock
+
+from tables.dns_cache_table import DNSCacheTable
 
 import pygui
-from tables.dns_cache_table import DNSCacheTable
 
 
 class DNSCache:
@@ -21,6 +21,7 @@ class DNSCache:
         self.t_refreshing = False
         self.filter_text = pygui.String("")
         self.t_lock = Lock()
+        self.keep_expired = pygui.Bool(True)
 
     # def _parse_sections(raw_output: str) -> List[str]:
     #     data = raw_output.split("\n")
@@ -78,7 +79,7 @@ class DNSCache:
         powershell_dns_cache = [{k: v for k, v in row.items()} for row in csv.DictReader(StringIO(data))]
         dns_table = DNSCacheTable("DNS Cache", powershell_dns_cache, time.time())
         with self.t_lock:
-            self.dns_table.merge(dns_table)
+            self.dns_table.merge(dns_table, self.keep_expired.value)
         self.did_refresh = True
         self.t_refreshing = False
 
@@ -92,6 +93,8 @@ class DNSCache:
     def draw(self):
         if pygui.get_frame_count() % self.reset_wait_time == 0:
             self.refresh()
+
+        pygui.checkbox("Keep expired", self.keep_expired)
 
         cx, cy = pygui.get_cursor_screen_pos()
         dl = pygui.get_window_draw_list()

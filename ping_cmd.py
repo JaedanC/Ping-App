@@ -1,14 +1,12 @@
 from __future__ import annotations
 import datetime
 import math
-import os
-import re
 import socket
 import threading
 import time
 from enum import Enum, auto
-from typing import List, Optional
 from io import StringIO
+from typing import List, Optional
 
 
 import ping3

@@ -11,3 +11,6 @@ pygui
 imgui.ini
 
 logging
+
+venv-exe
+output

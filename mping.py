@@ -14,6 +14,7 @@ from helper import clamp
 from dns_cache import DNSCache
 
 import pygui
+from pygui_demo import resource_path
 
 
 def help_marker(desc: str):
@@ -349,7 +350,7 @@ class PingApp:
     colour_timeout =           pygui.Vec4(1, 0, 0, 1)
     colour_destination_unreachable =  pygui.Vec4(1, 1, 0, 1)
     colour_host_unknown =   pygui.Vec4(0, 0, 1, 1)
-    IPS_DIRECTORY = "ips"
+    ABS_IPS_DIRECTORY = resource_path("ips")
 
     def __init__(self):
         self.current_time = time.time()
@@ -385,10 +386,10 @@ class PingApp:
         self.dns_cache = DNSCache()
 
     def refresh_ip_folder(self):
-        if not os.path.exists(PingApp.IPS_DIRECTORY):
-            os.makedirs(PingApp.IPS_DIRECTORY)
+        if not os.path.exists(PingApp.ABS_IPS_DIRECTORY):
+            os.makedirs(PingApp.ABS_IPS_DIRECTORY)
 
-        self.file_list = os.listdir(PingApp.IPS_DIRECTORY)
+        self.file_list = os.listdir(PingApp.ABS_IPS_DIRECTORY)
 
         # Keep only the files that have the .txt extension
         def ignore_readme(file_name_with_ext: str):
@@ -410,7 +411,7 @@ class PingApp:
                 continue
 
             file_content = existing_file_content.get(file) or IPFileContent(file)
-            with open(os.path.join(PingApp.IPS_DIRECTORY, file), encoding="utf-8") as f:
+            with open(os.path.join(PingApp.ABS_IPS_DIRECTORY, file), encoding="utf-8") as f:
                 file_content.set_content(f.read())
 
             content_to_keep.append(file_content)
@@ -438,8 +439,8 @@ class PingApp:
                 if pygui.input_text("###Renaming file", self.renaming_site, pygui.INPUT_TEXT_FLAGS_ENTER_RETURNS_TRUE):
                     try:
                         os.rename(
-                            os.path.join(PingApp.IPS_DIRECTORY, file),
-                            os.path.join(PingApp.IPS_DIRECTORY, self.renaming_site.value)
+                            os.path.join(PingApp.ABS_IPS_DIRECTORY, file),
+                            os.path.join(PingApp.ABS_IPS_DIRECTORY, self.renaming_site.value)
                         )
                         self.refresh_ip_folder()
                     except IOError as e:
@@ -460,7 +461,7 @@ class PingApp:
             pygui.text("Are you sure you want to delete:")
             pygui.text("{}".format(self.file_currently_deleting))
             if pygui.button("Confirm"):
-                os.remove(os.path.join(PingApp.IPS_DIRECTORY, self.file_currently_deleting))
+                os.remove(os.path.join(PingApp.ABS_IPS_DIRECTORY, self.file_currently_deleting))
                 self.deleting_site_modal.value = False
                 self.refresh_ip_folder()
             pygui.same_line()
@@ -483,7 +484,7 @@ class PingApp:
                         pygui.get_content_region_avail(),
                     )
                     if has_changed:
-                        with open(os.path.join(PingApp.IPS_DIRECTORY, loaded_content.get_filename()), "w", encoding="utf-8") as f:
+                        with open(os.path.join(PingApp.ABS_IPS_DIRECTORY, loaded_content.get_filename()), "w", encoding="utf-8") as f:
                             f.write(contents_buf.value)
                         loaded_content.content_changed()
 
@@ -495,7 +496,7 @@ class PingApp:
             self.is_currently_adding_site = pygui.button(" + ")
             pygui.same_line()
             if pygui.button("Open Folder"):
-                os.startfile(os.path.abspath(PingApp.IPS_DIRECTORY))
+                os.startfile(os.path.abspath(PingApp.ABS_IPS_DIRECTORY))
 
         if self.is_currently_adding_site:
             if pygui.is_key_pressed(pygui.KEY_ESCAPE):
@@ -507,8 +508,8 @@ class PingApp:
                 return
             self.is_currently_adding_site = False
 
-            if not os.path.exists(os.path.join(PingApp.IPS_DIRECTORY, self.adding_site.value)):
-                with open(os.path.join(PingApp.IPS_DIRECTORY, self.adding_site.value), "w", encoding="utf-8") as f:
+            if not os.path.exists(os.path.join(PingApp.ABS_IPS_DIRECTORY, self.adding_site.value)):
+                with open(os.path.join(PingApp.ABS_IPS_DIRECTORY, self.adding_site.value), "w", encoding="utf-8") as f:
                     f.write("")
                 self.adding_site.value = ""
                 self.refresh_ip_folder()

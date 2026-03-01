@@ -1,23 +1,19 @@
 import os
+import sys
+
 import pygui
 import glfw
 import OpenGL.GL as gl
-from pygui_demo import demo_fonts_init, pygui_demo_window
+from pygui_demo import demo_fonts_init, pygui_demo_window, resource_path
 from mping import PingApp
 
 
-# This is required for py2exe
-# Reference: https://www.py2exe.org/index.cgi/PyOpenGL
-from ctypes import util
-try:
-    from OpenGL.platform import win32
-except AttributeError:
-    pass
-
-
 vsync_enabled = pygui.Bool(True)
-show_imgui_demo = pygui.Bool(False)
 show_pygui_demo = pygui.Bool(True)
+show_imgui_demo = pygui.Bool(True)
+enable_framecap = pygui.Bool(False)
+max_framerate = pygui.Int(60)
+clear_color = pygui.Vec4(0.45, 0.55, 0.60, 1)
 
 
 ping_app = PingApp()
@@ -49,9 +45,9 @@ def main():
         glfw.terminate()
         return
 
-    if os.path.isfile("icons8-signal-96.ico"):
+    if os.path.isfile(resource_path("icons8-signal-96.ico")):
         from PIL import Image
-        image = Image.open("icons8-signal-96.ico")
+        image = Image.open(resource_path("icons8-signal-96.ico"))
         glfw.set_window_icon(window, 1, image)
 
     glfw.make_context_current(window)
@@ -78,12 +74,13 @@ def main():
     print("Opengl version: {}".format(gl.glGetString(gl.GL_VERSION).decode()))
     print("glfw version: {}.{}.{}".format(glfw.VERSION_MAJOR, glfw.VERSION_MINOR, glfw.VERSION_REVISION))
     print("ImGui version: {}".format(pygui.get_version()))
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        print("Running PyInstaller")
 
     # Try out different styles
     pygui.style_colors_dark()
     # pygui.style_colors_light()
     # pygui.style_colors_classic()
-    clear_color = (0.45, 0.55, 0.6, 1.0)
 
     pygui.IM_ASSERT(True, "You should never see this")
     try:
@@ -104,13 +101,15 @@ def main():
             pygui.c_impl_glfw_new_frame()
             pygui.new_frame()
 
-            render()
-
-            pygui.render()
+            # Making the context current before the render lets the user enable
+            # and disable vsync inside pygui if desired.
             glfw.make_context_current(window)
 
+            render()
+            pygui.render()
+
             gl.glViewport(0, 0, int(io.display_size[0]), int(io.display_size[1]))
-            gl.glClearColor(*clear_color)
+            gl.glClearColor(*clear_color.tuple())
             gl.glClear(gl.GL_COLOR_BUFFER_BIT)
 
             draw_data = pygui.get_draw_data()

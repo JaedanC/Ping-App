@@ -2,6 +2,7 @@ import os
 from typing import List
 
 from ping_cmd import Ping
+from pygui_demo import resource_path
 
 
 class PingLogger:
@@ -9,11 +10,11 @@ class PingLogger:
             self,
             logging_directory="logging"
         ):
-        self.logging_directory = logging_directory
+        self.abs_logging_directory = resource_path(logging_directory)
         self.last_synced = 0
 
     def get_logging_directory(self) -> str:
-        return self.logging_directory
+        return self.abs_logging_directory
 
     def log_replies_single_file(self, path: List[str], replies: List[Ping.Reply]):
         found: List[Ping.Reply] = []
@@ -23,14 +24,14 @@ class PingLogger:
             else:
                 break
 
-        log_file_path = os.path.join(self.logging_directory, *path)
+        abs_log_file_path = os.path.join(self.abs_logging_directory, *path)
         try:
-            if not os.path.exists(log_file_path):
-                os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
-                with open(log_file_path, "w", encoding="utf-8") as f:
+            if not os.path.exists(abs_log_file_path):
+                os.makedirs(os.path.dirname(abs_log_file_path), exist_ok=True)
+                with open(abs_log_file_path, "w", encoding="utf-8") as f:
                     f.write(Ping.Reply.csv_headers() + "\n")
 
-            with open(log_file_path, "a", encoding="utf-8") as f:
+            with open(abs_log_file_path, "a", encoding="utf-8") as f:
                 for reply in reversed(found):
                     f.write(reply.as_csv() + "\n")
         except PermissionError as e:

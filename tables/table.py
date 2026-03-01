@@ -18,7 +18,7 @@ class Table(ABC):
             data: List[dict]
         ):
         """
-        e.g.
+        e.g.x`
         fields_spec = [
             (str, "name",   "Name"),
             (str, "serial", "Serial"),

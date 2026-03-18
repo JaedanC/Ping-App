@@ -5,7 +5,7 @@ import pygui
 import glfw
 import OpenGL.GL as gl
 from pygui_demo import demo_fonts_init, pygui_demo_window, resource_path
-from mping import PingApp
+from src.mping import PingApp
 
 
 vsync_enabled = pygui.Bool(True)
@@ -45,9 +45,9 @@ def main():
         glfw.terminate()
         return
 
-    if os.path.isfile(resource_path("icons8-signal-96.ico")):
+    if os.path.isfile(resource_path("ping.ico")):
         from PIL import Image
-        image = Image.open(resource_path("icons8-signal-96.ico"))
+        image = Image.open(resource_path("ping.ico"))
         glfw.set_window_icon(window, 1, image)
 
     glfw.make_context_current(window)
@@ -59,6 +59,9 @@ def main():
 
     # Setup imgui
     pygui.create_context()
+
+    if os.path.isfile(resource_path("imgui.ini")):
+        pygui.get_io().ini_filename = resource_path("imgui.ini")
 
     # Setup config flags
     io = pygui.get_io()

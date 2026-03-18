@@ -7,7 +7,7 @@ import time
 from io import StringIO
 from threading import Thread, Lock
 
-from tables.dns_cache_table import DNSCacheTable
+from .tables.dns_cache_table import DNSCacheTable
 
 import pygui
 

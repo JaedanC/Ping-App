@@ -1,20 +1,19 @@
 from __future__ import annotations
-from itertools import zip_longest
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 import datetime
 import ipaddress
 import math
 import os
 import time
 
-from ping_cmd import Ping
-from ping_logger import PingLogger
-from ping_trace import LiveRouting
-from helper import clamp
-from dns_cache import DNSCache
+from .ping_cmd import Ping
+from .ping_logger import PingLogger
+from .ping_trace import LiveRouting
+from .helper import clamp
+from .dns_cache import DNSCache
 
 import pygui
-from pygui_demo import resource_path
+from pygui_demo import resource_path, limit_fps
 
 
 def help_marker(desc: str):
@@ -296,7 +295,7 @@ class IPFileContent:
 
     def set_content(self, content: str):
         if content != self._content.value:
-            self._content = pygui.String(content, buffer_size=len(content) + 2056)
+            self._content = pygui.String(content, buffer_size=len(content) + 10)
             self.content_changed()
 
     def get_group_manager(self) -> IPFileContent.IPGroupManager:
@@ -379,7 +378,8 @@ class PingApp:
         self.rolling_buffer_seconds = pygui.Int(600)
         self.ping_interval_seconds = pygui.Int(3) # Clamps to [1, 10]
         self.ping_interval_frames_to_wait = 0
-        self.battery_saving_mode = pygui.Bool(False)
+        self.limit_fps = pygui.Bool(True)
+        self.max_fps = pygui.Int(60)
         self.extend_ping_by_x_pixels = pygui.Int(1)
         self.source_address_for_pings = pygui.String("")
 
@@ -478,10 +478,17 @@ class PingApp:
                 if pygui.begin_tab_item(loaded_content.get_filename()):
                     contents_buf = loaded_content.get_content()
 
+                    def resize_callback(cb: pygui.ImGuiInputTextCallbackData, _):
+                        if cb.event_flag == pygui.INPUT_TEXT_FLAGS_CALLBACK_RESIZE and cb.buf_text_len >= contents_buf.buffer_size:
+                            print(f"Resizing to {cb.buf_size + 1}")
+                            contents_buf.resize(max(cb.buf_size + 1, contents_buf.buffer_size * 2))
+                    
                     has_changed = pygui.input_text_multiline(
                         "###Editor",
                         contents_buf,
                         pygui.get_content_region_avail(),
+                        flags=pygui.INPUT_TEXT_FLAGS_CALLBACK_RESIZE,
+                        callback=resize_callback,
                     )
                     if has_changed:
                         with open(os.path.join(PingApp.ABS_IPS_DIRECTORY, loaded_content.get_filename()), "w", encoding="utf-8") as f:
@@ -572,11 +579,20 @@ class PingApp:
             pygui.push_item_width(100)
             pygui.input_int("Extend ping by (px)", self.extend_ping_by_x_pixels)
             pygui.pop_item_width()
-            pygui.checkbox("Battery Saving Mode", self.battery_saving_mode)
+
+            pygui.checkbox("Limit FPS", self.limit_fps)
             pygui.same_line()
-            help_marker("Adds a time.sleep() to the main loop to decrease FPS. " + \
-                        "Can reduce the app's CPU usage by up to 90%. But by " + \
-                        "roughly 50% if lots of pings are running")
+            pygui.push_item_width(100)
+            pygui.input_int("FPS Cap", self.max_fps)
+            pygui.same_line()
+            pygui.pop_item_width()
+            pygui.same_line()
+            help_marker(
+                "Vsync is enabled by default, but on high refresh rate monitors," + \
+                " this will be used to cap the FPS to the recommended 60 fps." + \
+                " Consider lowering this to 15 to save battery or to keep a" + \
+                " stable framerate.")
+            
             pygui.push_item_width(120)
             pygui.input_text("Ping source address", self.source_address_for_pings)
             pygui.pop_item_width()
@@ -680,9 +696,9 @@ class PingApp:
             self.ping_interval_frames_to_wait = self.ping_interval_seconds.value * 60
             should_ping = True
 
-        # Battery saving mode
-        if self.battery_saving_mode:
-            time.sleep((3 / 60)) # Sleep for 3 frames
+        # FPS cap & battery saving mode
+        if self.limit_fps:
+            limit_fps(self.max_fps.value)
 
         for file_contents in self.loaded_contents:
             graphing_height = pygui.get_frame_height()

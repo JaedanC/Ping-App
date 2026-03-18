@@ -35,8 +35,11 @@ Note: This does not work for Python 12 and above.
 To compile this tool into an exe, additionally install py2exe:
 
 ```bash
-./venv/scripts/activate
-pip install py2exe
+python -m venv venv-exe
+./venv-exe/scripts/activate
+pip install -r requirements-exe.txt
+
+pyinstaller app.spec --noconfirm
 ```
 
 Then run `setup.py`. The resulting .exe will be inside the `dist` directory.

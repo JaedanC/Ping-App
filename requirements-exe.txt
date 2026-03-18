@@ -1,4 +1,4 @@
-auto-py-to-exe
+pyinstaller
 glfw
 Pillow
 ping3

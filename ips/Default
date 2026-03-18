@@ -21,3 +21,13 @@ r.manage.microsoft.com
 
 # Meraki
 n9.dashboard.meraki.com
+
+# DC
+dc01
+dc02
+az-dc01
+az-dc02
+www.nslhd.health.nsw.gov.au
+
+# Potter
+10.173.202.1

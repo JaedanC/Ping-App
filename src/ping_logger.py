@@ -1,8 +1,8 @@
 import os
 from typing import List
 
-from ping_cmd import Ping
-from pygui_demo import resource_path
+from .ping_cmd import Ping
+from .helper import resource_path
 
 
 class PingLogger:

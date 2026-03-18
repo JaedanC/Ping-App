@@ -6,8 +6,8 @@ from collections import defaultdict
 from typing import List, Dict, Tuple, Optional
 from enum import Enum, auto
 
-from helper import clamp, lerp
-from ping_cmd import Ping
+from .helper import clamp, lerp
+from .ping_cmd import Ping
 
 import pygui
 

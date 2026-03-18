@@ -1,7 +1,6 @@
 __pycache__
 .vscode
 venv
-dist
 
 ips/*
 !ips/Default
@@ -13,4 +12,5 @@ imgui.ini
 logging
 
 venv-exe
-output
+build
+dist

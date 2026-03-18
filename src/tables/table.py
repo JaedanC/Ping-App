@@ -1,7 +1,7 @@
 from abc import ABC
 from typing import List, Any
 
-from helper import negated, none_compare, parse_filter_string
+from ..helper import negated, none_compare, parse_filter_string
 
 import pygui
 

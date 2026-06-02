@@ -8,6 +8,7 @@ from enum import Enum, auto
 
 from .helper import clamp, lerp
 from .ping_cmd import Ping
+from .pygui_helper import EditableString
 
 import pygui
 
@@ -25,6 +26,7 @@ class PingTrace:
         self.show = pygui.Bool(True)
         self._is_marked = True
         self._hits = 1
+        self.name = EditableString(pygui.String("Path"), pygui.get_frame_count())
 
     def tick(self):
         for ping in self.pings:
@@ -149,8 +151,8 @@ class LiveRouting:
         self._next_run_recommended_hops = self._hops.value
         self._show_timeouts = pygui.Bool(True)
         self._show_line_between_timeout = pygui.Bool(False)
-        self._ping_timeout = pygui.Int(2)
-        self._wait_reset_seconds = pygui.Int(6)
+        self._ping_timeout = pygui.Int(1)
+        self._wait_reset_seconds = pygui.Int(3)
         self._wait_timer_ticks = self._wait_reset_seconds.value * 60
         self._current_trace: Optional[PingTrace] = None
         self._unique_paths: List[PingTrace] = []
@@ -178,13 +180,15 @@ class LiveRouting:
             self._create_trace()
         
         pygui.push_item_width(100)
-        pygui.input_int("Hops", self._hops)
-        pygui.same_line()
-        pygui.text_disabled("Currently: {}".format(self._next_run_recommended_hops))
-        pygui.input_int("Timeout wait", self._ping_timeout)
-        pygui.input_int("Ping frequency", self._wait_reset_seconds)
-        pygui.checkbox("Show timeouts", self._show_timeouts)
-        pygui.pop_item_width()
+        if pygui.tree_node("Options"):
+            pygui.input_int("Hops", self._hops)
+            pygui.same_line()
+            pygui.text_disabled("Currently: {}".format(self._next_run_recommended_hops))
+            pygui.input_int("Timeout wait", self._ping_timeout)
+            pygui.input_int("Ping frequency", self._wait_reset_seconds)
+            pygui.checkbox("Show timeouts", self._show_timeouts)
+            pygui.pop_item_width()
+            pygui.tree_pop()
         self._hops.value = clamp(self._hops.value, 1, 255)
         self._ping_timeout.value = clamp(self._ping_timeout.value, 1, 4)
         self._wait_reset_seconds.value = clamp(self._wait_reset_seconds.value, 1, 6)
@@ -265,10 +269,14 @@ class LiveRouting:
         return ttl_lookup
 
     def draw(self):
-        for i, ping_trace in enumerate(self._unique_paths):
+        swapping = None
+        for i, ping_trace in enumerate(self._unique_paths):         
+            pygui.begin_group()
             pygui.checkbox(f"### Show {i} {self._destination}", ping_trace.show)
             pygui.same_line()
-            pygui.color_edit3("Path {}".format(i + 1), ping_trace.ping_colour, pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
+            pygui.color_edit3("### Path {}".format(i + 1), ping_trace.ping_colour, pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
+            pygui.same_line()
+            ping_trace.name.draw()
             pygui.same_line()
             if pygui.button("Clear ### Live Routing Hop: {} {}".format(self._destination, i)):
                 ping_trace.clear_hits()
@@ -277,6 +285,23 @@ class LiveRouting:
             if ping_trace.is_marked():
                 pygui.same_line()
                 pygui.text_disabled("Selected")
+            pygui.end_group()
+
+            if pygui.begin_drag_drop_source(pygui.DRAG_DROP_FLAGS_SOURCE_ALLOW_NULL_ID):
+                pygui.set_drag_drop_payload("Path", i)
+                pygui.text(ping_trace.name.content().value)
+                pygui.end_drag_drop_source()
+            if pygui.begin_drag_drop_target():
+                payload = pygui.accept_drag_drop_payload("Path")
+                if payload is not None:
+                    swapping = (payload.data, i)
+                pygui.end_drag_drop_target()
+        
+        if swapping is not None:
+            a, b = swapping
+            temp = self._unique_paths[a]
+            self._unique_paths[a] = self._unique_paths[b]
+            self._unique_paths[b] = temp
 
         # self._draw_locations.clear()
         if pygui.begin_child("Live Routing " + self._destination, child_flags=pygui.CHILD_FLAGS_BORDERS):

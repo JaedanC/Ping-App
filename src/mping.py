@@ -342,13 +342,59 @@ class IPFileContent:
         return self._group_manager.get_groups()
 
 
+class ResponseTimeColours:
+    def __init__(self):
+        self.tiers = [
+            (pygui.Int(0), pygui.Vec4(0, 1, 0, 1)   , "a"),
+            (pygui.Int(20), pygui.Vec4(0, 0.6, 0, 1), "b"),
+            (pygui.Int(100), pygui.Vec4(1, 1, 1, 1) , "c"),
+        ]
+    
+    def draw_editor(self):
+        if pygui.button("Add"):
+            self.tiers.append((pygui.Int(50), pygui.Vec4(0, 1, 0, 1), pygui.get_frame_count()))
+
+        self.tiers.sort(key=lambda x: x[0].value)
+        to_pop = None
+        self.tiers[0][0].value = 0
+        for i, (tier, colour, _id) in enumerate(self.tiers):
+            pygui.push_item_width(100)
+            if i == 0:
+                pygui.begin_disabled()
+            pygui.input_int(f"###{_id}", tier)
+            if i == 0:
+                pygui.end_disabled()
+            pygui.pop_item_width()
+            pygui.same_line()
+            
+            pygui.color_edit3(
+                f"###{_id}",
+                colour,
+                pygui.COLOR_EDIT_FLAGS_NO_INPUTS
+            )
+            if i != 0:
+                pygui.same_line()
+                if pygui.button(f"x ##{_id}"):
+                    to_pop = i
+                
+
+        if to_pop is not None:
+            self.tiers.pop(to_pop)
+        
+    def get_tier_colour(self, ping_time: int) -> pygui.Vec4:
+        chosen_colour = self.tiers[0][1]
+        for tier, colour, _ in self.tiers:
+            if tier.value > ping_time:
+                return chosen_colour
+            chosen_colour = colour
+        return chosen_colour
+
+
 class PingApp:
-    colour_success =           pygui.Vec4(0, 0.8, 0, 1)
-    colour_success_low_ping =  pygui.Vec4(0, 1, 0, 1)
-    colour_success_high_ping = pygui.Vec4(1, 1, 1, 1)
-    colour_timeout =           pygui.Vec4(1, 0, 0, 1)
-    colour_destination_unreachable =  pygui.Vec4(1, 1, 0, 1)
-    colour_host_unknown =   pygui.Vec4(0, 0, 1, 1)
+    colour_tiers = ResponseTimeColours()
+    colour_timeout = pygui.Vec4(1, 0, 0, 1)
+    colour_destination_unreachable = pygui.Vec4(1, 1, 0, 1)
+    colour_host_unknown = pygui.Vec4(0, 0, 1, 1)
     ABS_IPS_DIRECTORY = resource_path("ips")
 
     def __init__(self):
@@ -791,12 +837,7 @@ class PingApp:
                                 pygui.same_line()
 
                             if reply.reply_type is Ping.ReplyType.Success:
-                                if reply.response_time > 100: # 100ms
-                                    colour = PingApp.colour_success_high_ping.to_u32()
-                                elif reply.response_time > 20: # 100ms
-                                    colour = PingApp.colour_success.to_u32()
-                                else:
-                                    colour = PingApp.colour_success_low_ping.to_u32()
+                                colour = PingApp.colour_tiers.get_tier_colour(reply.response_time).to_u32()
                             elif reply.reply_type is Ping.ReplyType.DestinationUnreachable:
                                 colour = PingApp.colour_destination_unreachable.to_u32()
                             elif reply.reply_type is Ping.ReplyType.HostUnknown:
@@ -853,9 +894,12 @@ class PingApp:
                 pygui.pop_id()
 
     def draw_colour_editor(self):
-        pygui.color_edit3("Success",   PingApp.colour_success)           # pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
-        pygui.color_edit3("High Ping", PingApp.colour_success_high_ping) # pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
-        pygui.color_edit3("Timeout",   PingApp.colour_timeout)           # pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
+        PingApp.colour_tiers.draw_editor()
+        if pygui.tree_node("Other"):
+            pygui.color_edit3("Timeout",                 PingApp.colour_timeout,                 pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
+            pygui.color_edit3("Destination Unreachable", PingApp.colour_destination_unreachable, pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
+            pygui.color_edit3("Host Unknown",            PingApp.colour_host_unknown,            pygui.COLOR_EDIT_FLAGS_NO_INPUTS)
+            pygui.tree_pop()
 
     def draw_dns_cache(self):
         self.dns_cache.draw()

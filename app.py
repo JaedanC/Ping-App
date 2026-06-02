@@ -60,8 +60,11 @@ def main():
     # Setup imgui
     pygui.create_context()
 
-    if os.path.isfile(resource_path("imgui.ini")):
-        pygui.get_io().ini_filename = resource_path("imgui.ini")
+    try:
+        if os.path.isfile(resource_path("imgui.ini")):
+            pygui.get_io().ini_filename = resource_path("imgui.ini")
+    except NotImplementedError:
+        pass
 
     # Setup config flags
     io = pygui.get_io()

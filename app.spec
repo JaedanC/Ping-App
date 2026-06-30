@@ -1,11 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_data_files
+collected_datas = collect_data_files("pygui_cython")
 
 a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
-    datas=[('ping.ico', '.'), ('imgui.ini', '.')],
+    datas=[('ping.ico', '.'), ('imgui.ini', '.')] + collected_datas,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

@@ -9,7 +9,7 @@ from threading import Thread, Lock
 
 from .tables.dns_cache_table import DNSCacheTable
 
-import pygui
+import pygui_cython as pygui
 
 
 class DNSCache:
@@ -23,53 +23,7 @@ class DNSCache:
         self.t_lock = Lock()
         self.keep_expired = pygui.Bool(True)
 
-    # def _parse_sections(raw_output: str) -> List[str]:
-    #     data = raw_output.split("\n")
-    #     data = list(map(lambda x: x.strip(), data))
-    #     data = list(filter(lambda x: x != "", data))
-
-    #     sections = []
-    #     last_found_dots = 0
-    #     for i, row in enumerate(data):
-    #         if row == "----------------------------------------":
-    #             sections.append(data[last_found_dots - 1: i - 1])
-    #             last_found_dots = i
-    #     sections.append(data[last_found_dots - 1:])
-
-    #     sections = sections[1:]
-    #     return sections
-
-    # def _parse_records(section: List[str]) -> List[str]:
-    #     heading = section[0]
-    #     line_regex = re.compile(r"^(.*?) [\. ]+: (.*)$")
-    #     record_details = []
-    #     record_detail = {}
-    #     for row in section:
-    #         line_match = line_regex.match(row)
-    #         if not line_match:
-    #             continue
-            
-    #         key, value = line_match.groups()
-
-    #         if key == "Record Name" and record_detail:
-    #             record_details.append(record_detail)
-    #             record_detail = {}
-            
-    #         record_detail[key] = value
-    #     record_details.append(record_detail)
-    #     return {heading :record_details}
-
     def _thread_refresh(self):
-        # result = subprocess.run(['ipconfig', '/displaydns'], capture_output=True, text=True)
-        # data = result.stdout
-        # sections = DNSCache._parse_sections(data)
-
-        # all_sections = {}
-        # for section in sections:
-        #     all_sections.update(DNSCache._parse_records(section))
-        
-        # self.cache = all_sections
-
         result = subprocess.run(
             ["powershell.exe", "./dns_cmd.ps1"],
             capture_output=True,
@@ -88,7 +42,6 @@ class DNSCache:
             self.t_refreshing = True
             self.t = Thread(target=self._thread_refresh)
             self.t.start()
-
 
     def draw(self):
         if pygui.get_frame_count() % self.reset_wait_time == 0:

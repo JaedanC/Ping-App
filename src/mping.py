@@ -12,8 +12,8 @@ from .ping_trace import LiveRouting
 from .helper import clamp
 from .dns_cache import DNSCache
 
-import pygui
-from pygui_demo import resource_path, limit_fps
+import pygui_cython as pygui
+from pygui_cython.pygui_demo import resource_path, limit_fps
 
 
 def help_marker(desc: str):
@@ -395,7 +395,7 @@ class PingApp:
     colour_timeout = pygui.Vec4(1, 0, 0, 1)
     colour_destination_unreachable = pygui.Vec4(1, 1, 0, 1)
     colour_host_unknown = pygui.Vec4(0, 0, 1, 1)
-    ABS_IPS_DIRECTORY = resource_path("ips")
+    ABS_IPS_DIRECTORY = os.path.abspath("ips") # resource_path("ips")
 
     def __init__(self):
         self.current_time = time.time()

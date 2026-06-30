@@ -5,7 +5,7 @@ a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
-    datas=[('pygui/fonts', 'pygui/fonts/'), ('pygui/img', 'pygui/img/'), ('ping.ico', '.'), ('imgui.ini', '.')],
+    datas=[('ping.ico', '.'), ('imgui.ini', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

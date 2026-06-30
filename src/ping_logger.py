@@ -2,7 +2,6 @@ import os
 from typing import List
 
 from .ping_cmd import Ping
-from .helper import resource_path
 
 
 class PingLogger:
@@ -10,7 +9,7 @@ class PingLogger:
             self,
             logging_directory="logging"
         ):
-        self.abs_logging_directory = resource_path(logging_directory)
+        self.abs_logging_directory = os.path.abspath(logging_directory)
         self.last_synced = 0
 
     def get_logging_directory(self) -> str:

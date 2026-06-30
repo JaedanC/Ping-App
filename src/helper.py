@@ -1,16 +1,4 @@
-import os
-import sys
 from typing import Tuple
-
-
-def resource_path(relative_path):
-    """Makes pygui compatible with PyInstaller"""
-    try:
-        # PyInstaller creates a temporary folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    except AttributeError:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
 
 
 def clamp(value, lower_bound, upper_bound):

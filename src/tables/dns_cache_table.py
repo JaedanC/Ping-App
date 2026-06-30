@@ -3,7 +3,7 @@ import time
 
 from .table import Table
 
-import pygui
+import pygui_cython as pygui
 
 
 class DNSCacheTable(Table):

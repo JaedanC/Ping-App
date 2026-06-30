@@ -3,7 +3,7 @@ from typing import List, Any
 
 from ..helper import negated, none_compare, parse_filter_string
 
-import pygui
+import pygui_cython as pygui
 
 
 class Table(ABC):

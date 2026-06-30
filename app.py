@@ -1,10 +1,10 @@
 import os
 import sys
 
-import pygui
+import pygui_cython as pygui
 import glfw
 import OpenGL.GL as gl
-from pygui_demo import demo_fonts_init, pygui_demo_window, resource_path
+from pygui_cython.pygui_demo import demo_fonts_init, pygui_demo_window, resource_path
 from src.mping import PingApp
 
 

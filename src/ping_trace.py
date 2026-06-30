@@ -10,7 +10,7 @@ from .helper import clamp, lerp
 from .ping_cmd import Ping
 from .pygui_helper import EditableString
 
-import pygui
+import pygui_cython as pygui
 
 
 class PingTrace:

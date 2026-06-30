@@ -1,4 +1,5 @@
-import pygui
+import pygui_cython as pygui
+
 
 class EditableString:
     def __init__(self, content: pygui.String, _id: int):

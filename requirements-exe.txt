@@ -3,3 +3,4 @@ glfw
 Pillow
 ping3
 PyOpenGL
+pygui-cython

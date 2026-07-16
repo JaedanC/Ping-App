@@ -211,7 +211,6 @@ class LiveRouting:
         )
         dl.path_stroke(
             pygui.Vec4(0.5, 0.5, 0.5, 1).to_u32(),
-            0,
             2
         )
         pygui.dummy((0, 0))
